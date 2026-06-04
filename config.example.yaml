@@ -1,0 +1,43 @@
+# Token Counter configuration.
+# Copy this to ~/.token_counter/config.yaml and edit it.
+
+# How often the tray refreshes (seconds). 30 = "live within 30s".
+refresh_seconds: 30
+
+# Where the local usage ledger (SQLite) lives.
+ledger_path: "~/.token_counter/ledger.db"
+
+# Local HTTP endpoint your code POSTs usage to (see README "Reporting usage").
+server:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8787
+
+providers:
+  # --- Claude, tracked live from your own code (recommended) -------------
+  # You set the allowance; every call you report counts against it, per model.
+  - name: claude
+    type: local_ledger
+    budget:
+      period: monthly        # daily | weekly | monthly | total
+      limit: 1000000         # your 1,000,000-token allowance
+      per_model:             # optional sub-limits per model
+        claude-opus-4-8: 600000
+        claude-sonnet-4-6: 400000
+
+  # --- Gemini, same live-ledger approach --------------------------------
+  - name: gemini
+    type: gemini
+    budget:
+      period: monthly
+      limit: 2000000
+
+  # --- Optional: pull Claude usage from the Anthropic Usage API ----------
+  # Requires an Admin key (sk-ant-admin-...). Has minutes of lag, so prefer
+  # the live ledger above for "within 30s". Uncomment to enable.
+  # - name: claude-api
+  #   type: anthropic_admin
+  #   admin_key_env: ANTHROPIC_ADMIN_KEY
+  #   budget:
+  #     period: monthly
+  #     limit: 1000000
