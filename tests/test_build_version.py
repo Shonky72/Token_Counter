@@ -23,14 +23,14 @@ def test_version_flag(capsys):
     rc = app.main(["--version"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Token Counter" in out
+    assert "tokn" in out
     assert __version__ in out
 
 
 def test_startup_logs_version(capsys):
     bootstrap.log_startup()
     out = capsys.readouterr().out
-    assert "Token Counter" in out
+    assert "tokn" in out
     assert __version__ in out
 
 
@@ -49,4 +49,4 @@ def test_stamp_generates_compilable_outputs():
     vinfo = stamp.version_info_text("1.2.3")
     compile(vinfo, "version_info.txt", "exec")
     assert "1, 2, 3, 0" in vinfo
-    assert "Token Counter" in vinfo
+    assert "tokn" in vinfo

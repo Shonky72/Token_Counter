@@ -2,14 +2,14 @@
 REM ===================================================================
 REM  Token Counter - build a standalone Windows .exe
 REM  Just double-click this file. It installs what's needed and builds
-REM  dist\TokenCounter.exe, which you can share with friends.
+REM  dist\tokn.exe, which you can share with friends.
 REM ===================================================================
 setlocal
 cd /d "%~dp0"
 
 echo.
 echo ============================================
-echo   Building TokenCounter.exe
+echo   Building tokn.exe
 echo ============================================
 echo.
 
@@ -25,7 +25,7 @@ if errorlevel 1 (
 )
 
 REM Close any running copy so it can't lock files or confuse the rebuild.
-taskkill /IM TokenCounter.exe /F >nul 2>nul
+taskkill /IM tokn.exe /F >nul 2>nul
 
 echo Step 1/4: installing dependencies ^(this can take a minute^)...
 python -m pip install --upgrade pip
@@ -54,9 +54,9 @@ if not exist "icon.ico" (
 
 echo.
 echo Step 4/4: building the executable ^(clean build^)...
-python -m PyInstaller --clean --noconfirm --noconsole --onefile --name TokenCounter --paths src ^
+python -m PyInstaller --clean --noconfirm --noconsole --onefile --name tokn --paths src ^
   --icon icon.ico --version-file version_info.txt ^
-  --collect-all pystray --collect-all PIL --collect-all keyring ^
+  --collect-all pystray --collect-all PIL --collect-all keyring --collect-data token_counter ^
   run_token_counter.py
 if errorlevel 1 (
   echo.
@@ -67,12 +67,12 @@ if errorlevel 1 (
 
 echo.
 echo Creating a Desktop shortcut...
-"dist\TokenCounter.exe" shortcut
+"dist\tokn.exe" shortcut
 
 echo.
 echo ============================================
 echo   Done!  Your file is here:
-echo   %CD%\dist\TokenCounter.exe
+echo   %CD%\dist\tokn.exe
 echo   A "Token Counter" shortcut is on your Desktop.
 echo ============================================
 echo.
@@ -81,13 +81,13 @@ python -c "import sys; sys.path.insert(0,'src'); import token_counter; print('  
 echo (Confirm it in the tray menu's top line, or in
 echo  %USERPROFILE%\.token_counter\token_counter.log after launch.)
 echo.
-echo Copy TokenCounter.exe anywhere and double-click to run it.
+echo Copy tokn.exe anywhere and double-click to run it.
 echo Friends can run the same file and enter their own API keys.
 echo.
 
 set /p launch=Launch Token Counter now? (Y/N):
 if /I "%launch%"=="Y" (
-  start "" "dist\TokenCounter.exe"
+  start "" "dist\tokn.exe"
   echo Started! Look for the bar-chart icon near your clock ^(click the ^^ arrow^).
 )
 echo.

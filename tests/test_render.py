@@ -1,7 +1,33 @@
 from datetime import datetime, timedelta, timezone
 
 from token_counter.models import Gauge, ProviderStatus
-from token_counter.render import detail_text, human, overall_percent, tooltip_text
+from token_counter.render import (
+    detail_text,
+    human,
+    overall_percent,
+    tooltip_text,
+    tray_title,
+)
+
+
+def test_tray_title_capped_under_windows_limit():
+    # Three providers with long error messages must NOT exceed the 120-char cap
+    # (the real crash was 219 > 128 on Windows szTip).
+    long_err = "no rate-limit data yet — make an API call (and forward its headers)"
+    statuses = [
+        ProviderStatus(provider=name, error=long_err)
+        for name in ("claude", "openai", "gemini")
+    ]
+    title = tray_title(statuses)
+    assert len(title) <= 120
+    assert title.startswith("tokn")
+
+
+def test_tray_title_summarizes_percent():
+    s = ProviderStatus(provider="claude", gauges=[Gauge("tokens/min", 70, 100)])
+    title = tray_title([s])
+    assert "claude: 70%" in title
+    assert len(title) <= 120
 
 
 def test_human():

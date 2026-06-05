@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-_VALUE_NAME = "TokenCounter"
+_VALUE_NAME = "tokn"
 
 
 def is_supported() -> bool:

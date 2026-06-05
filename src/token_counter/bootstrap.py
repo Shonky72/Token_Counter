@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 LOG_DIR = Path("~/.token_counter").expanduser()
-APP_USER_MODEL_ID = "ShonkySoftware.TokenCounter"
+APP_USER_MODEL_ID = "Shonky.tokn"
 
 
 def log_file_path() -> Path:
@@ -60,8 +60,7 @@ def log_startup() -> None:
     try:
         from ._buildinfo import build_string
 
-        print(f"[token-counter] Token Counter {build_string()} starting "
-              f"(log: {log_file_path()})")
+        print(f"[tokn] tokn {build_string()} starting (log: {log_file_path()})")
     except Exception:  # pragma: no cover - never block startup
         pass
 
@@ -88,7 +87,7 @@ def report_fatal(exc: BaseException) -> None:
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror(
-            "Token Counter — startup error",
+            "tokn — startup error",
             f"{type(exc).__name__}: {exc}\n\nDetails were written to:\n{log_file_path()}",
         )
         root.destroy()

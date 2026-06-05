@@ -240,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "version", False):
         from ._buildinfo import build_string
 
-        print(f"Token Counter {build_string()}")
+        print(f"tokn {build_string()}")
         return 0
 
     if not getattr(args, "command", None):

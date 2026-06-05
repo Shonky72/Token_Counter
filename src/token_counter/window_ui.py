@@ -98,7 +98,7 @@ class Dashboard:
         self.statuses = []
 
         self.root = tk.Tk()
-        self.root.title("Token Counter")
+        self.root.title("tokn")
         self.root.configure(bg=BG)
         self.root.geometry("440x560")
         self.root.minsize(380, 360)
@@ -117,11 +117,12 @@ class Dashboard:
     def _build_header(self):
         tk = self.tk
         from ._buildinfo import build_string
+        from .fonts import app_font_family
 
         bar = tk.Frame(self.root, bg=BG)
         bar.pack(fill="x", padx=12, pady=(12, 6))
-        tk.Label(bar, text="TOKEN TRACKER", bg=BG, fg=TEXT,
-                 font=("Segoe UI", 11, "bold")).pack(side="left")
+        tk.Label(bar, text="tokn", bg=BG, fg=TEXT,
+                 font=(app_font_family(), 15, "bold")).pack(side="left")
         tk.Label(bar, text=f"v{build_string()}", bg=BG, fg=SUBTEXT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
         tk.Button(bar, text="⚙ Settings", command=self._open_settings,
@@ -246,7 +247,7 @@ class SettingsDialog:
 
         self.startup_var = tk.BooleanVar(value=startup_mod.is_enabled())
         chk = tk.Checkbutton(
-            top, text="Open Token Counter on Windows startup",
+            top, text="Open tokn on Windows startup",
             variable=self.startup_var, command=self._toggle_startup,
             bg=BG, fg=TEXT, selectcolor=CARD, activebackground=BG,
             activeforeground=TEXT, anchor="w",

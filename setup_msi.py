@@ -38,6 +38,8 @@ build_exe_options = {
     ],
     "excludes": ["pytest", "tkinter.test", "test", "unittest"],
     "include_msvcr": True,
+    # Ship the bundled JetBrains Mono font alongside the package data.
+    "include_files": [("src/token_counter/assets", "lib/token_counter/assets")],
 }
 
 # No console window for the GUI/tray app.
@@ -50,13 +52,13 @@ icon = "icon.ico" if Path("icon.ico").exists() else None
 #          Description, Hotkey, Icon_, IconIndex, ShowCmd, WkDir
 shortcut_table = [
     (
-        "StartMenuShortcut", "ProgramMenuFolder", "Token Counter",
-        "TARGETDIR", "[TARGETDIR]TokenCounter.exe", None,
+        "StartMenuShortcut", "ProgramMenuFolder", "tokn",
+        "TARGETDIR", "[TARGETDIR]tokn.exe", None,
         "Live AI token usage tracker", None, None, None, None, "TARGETDIR",
     ),
     (
-        "DesktopShortcut", "DesktopFolder", "Token Counter",
-        "TARGETDIR", "[TARGETDIR]TokenCounter.exe", None,
+        "DesktopShortcut", "DesktopFolder", "tokn",
+        "TARGETDIR", "[TARGETDIR]tokn.exe", None,
         "Live AI token usage tracker", None, None, None, None, "TARGETDIR",
     ),
 ]
@@ -66,7 +68,7 @@ bdist_msi_options = {
     "upgrade_code": "{6D9F2C1A-7E4B-4C3D-9F8A-1B2C3D4E5F60}",
     "add_to_path": False,
     "all_users": False,  # per-user install -> no admin prompt
-    "initial_target_dir": r"[LocalAppDataFolder]\Programs\TokenCounter",
+    "initial_target_dir": r"[LocalAppDataFolder]\Programs\tokn",
     "data": {"Shortcut": shortcut_table},
 }
 
@@ -74,14 +76,14 @@ executables = [
     Executable(
         "run_token_counter.py",
         base=base,
-        target_name="TokenCounter.exe",
+        target_name="tokn.exe",
         icon=icon,
-        copyright="Token Counter",
+        copyright="tokn",
     )
 ]
 
 setup(
-    name="TokenCounter",
+    name="tokn",
     version=VERSION,
     description="Live AI token usage tracker for the system tray",
     options={"build_exe": build_exe_options, "bdist_msi": bdist_msi_options},

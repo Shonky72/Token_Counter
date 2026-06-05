@@ -61,14 +61,14 @@ VSVersionInfo(
   kids=[
     StringFileInfo([
       StringTable('040904B0', [
-        StringStruct('CompanyName', 'Token Counter'),
-        StringStruct('FileDescription', 'Token Counter'),
+        StringStruct('CompanyName', 'tokn'),
+        StringStruct('FileDescription', 'tokn'),
         StringStruct('FileVersion', '{version}'),
-        StringStruct('InternalName', 'TokenCounter'),
-        StringStruct('OriginalFilename', 'TokenCounter.exe'),
-        StringStruct('ProductName', 'Token Counter'),
+        StringStruct('InternalName', 'tokn'),
+        StringStruct('OriginalFilename', 'tokn.exe'),
+        StringStruct('ProductName', 'tokn'),
         StringStruct('ProductVersion', '{version}'),
-        StringStruct('LegalCopyright', 'Token Counter'),
+        StringStruct('LegalCopyright', 'tokn'),
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])]),

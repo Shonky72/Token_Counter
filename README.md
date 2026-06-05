@@ -1,4 +1,4 @@
-# Token Counter
+# tokn
 
 A Windows system-tray widget that shows a **live count of tokens used vs.
 remaining against the limits your AI provider actually enforces** — read
@@ -7,7 +7,7 @@ the tray icon for the totals; right-click for the per-window breakdown and the
 **sign-in screen**. Refreshes every 30 seconds.
 
 ```
-Token Counter
+tokn
 claude · tokens/min: 28K/40K · 12K left (70%) · resets in 41s
 openai · tokens/min: 500/90K · 89.5K left (1%) · resets in 359s
 ```
@@ -21,7 +21,7 @@ The tray icon fills and changes color as you approach the limit
 
 Every Anthropic and OpenAI API response carries **rate-limit headers** — the
 per-minute token/request `limit`, `remaining`, and `reset` that your account
-tier enforces. Token Counter reads those directly, so the gauge is the
+tier enforces. tokn reads those directly, so the gauge is the
 provider's real enforced limit, live, with a reset countdown. Nothing is
 hand-configured.
 
@@ -198,36 +198,36 @@ extension point) are the two worked templates.
 
 ## Package as a standalone Windows .exe (shareable)
 
-> **Your friends do NOT need Python.** The built `TokenCounter.exe` bundles
+> **Your friends do NOT need Python.** The built `tokn.exe` bundles
 > Python and everything else inside it — it's one self-contained file. Only
 > *building* needs Python, and even that can be done for you (see "Get it
 > without building" below).
 
 **Easiest:** double-click **`build.bat`**. It installs what's needed and produces
-`dist\TokenCounter.exe` — one file you can copy anywhere or send to friends.
+`dist\tokn.exe` — one file you can copy anywhere or send to friends.
 
 ### Get it without building (GitHub Actions)
 
 So nobody needs Python at all: the repo includes a workflow
-(`.github/workflows/build-windows.yml`) that builds `TokenCounter.exe` and the
+(`.github/workflows/build-windows.yml`) that builds `tokn.exe` and the
 `.msi` on a Windows runner every push. The `.exe` and `.msi` build in
 **separate jobs** and upload with `if: always()`, so one failing never blocks
 the other — you always get a fresh `.exe`. Open the **Actions** tab → the latest
-**green** run → download the **TokenCounter-exe** artifact and share that file.
+**green** run → download the **tokn-exe** artifact and share that file.
 
 For a stable link to hand friends, **create a GitHub Release** (tag it): the
-workflow attaches `TokenCounter.exe` and the `.msi` straight to the release page.
+workflow attaches `tokn.exe` and the `.msi` straight to the release page.
 
 Equivalent manual command:
 
 ```bat
 python -m pip install -e . pyinstaller
-python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
+python -m PyInstaller --noconsole --onefile --name tokn --paths src ^
     --collect-all pystray --collect-all PIL --collect-all keyring ^
     run_token_counter.py
 ```
 
-`build.bat` also embeds the app icon into the `.exe`, drops a **"Token Counter"
+`build.bat` also embeds the app icon into the `.exe`, drops a **"tokn"
 shortcut on your Desktop**, and offers to launch the app when it finishes.
 
 ### Build a .msi installer
@@ -237,17 +237,17 @@ Programs), double-click **`build_msi.bat`**. It uses
 [cx_Freeze](https://cx-freeze.readthedocs.io) to produce:
 
 ```
-dist\TokenCounter-0.1.0-win64.msi
+dist\tokn-0.1.0-win64.msi
 ```
 
 Double-click that `.msi` to install. It's a **per-user install (no admin
-prompt)** to `%LOCALAPPDATA%\Programs\TokenCounter`, and uninstalls from
+prompt)** to `%LOCALAPPDATA%\Programs\tokn`, and uninstalls from
 Windows Settings → Apps like any normal program. Share the single `.msi` with
 friends — each person enters their own API keys after installing.
 
 To install **system-wide** instead (all users, requires admin), edit
 `setup_msi.py`: set `all_users` to `True` and `initial_target_dir` to
-`r"[ProgramFilesFolder]\TokenCounter"`.
+`r"[ProgramFilesFolder]\tokn"`.
 
 > `.msi` vs the bare `.exe`: the `.exe` from `build.bat` is one portable file you
 > can copy anywhere; the `.msi` is a real installer that registers the app with
@@ -261,7 +261,7 @@ touching the program files. Add `--purge` to also delete the
 `~/.token_counter` config/ledger folder, or `--keep-keys` to leave credentials
 in place.
 
-**Sharing with friends:** send them just `TokenCounter.exe`. On first run it
+**Sharing with friends:** send them just `tokn.exe`. On first run it
 writes a default config to `~/.token_counter/config.yaml` and opens the sign-in
 window automatically — each person enters **their own** API keys, which are
 saved in **their own** Windows Credential Manager. Nothing of yours travels with
@@ -285,12 +285,12 @@ automatically.
 Every build is stamped with its version + git commit, shown in four places so a
 stale build can't masquerade as a new one:
 
-- **Right-click `TokenCounter.exe` → Properties → Details** → "Product name"
-  reads **Token Counter** and "File version" shows the number.
-- The **tray menu's top line**: `Token Counter v0.1.0 (<commit>, <date>)`.
+- **Right-click `tokn.exe` → Properties → Details** → "Product name"
+  reads **tokn** and "File version" shows the number.
+- The **tray menu's top line**: `tokn v0.1.0 (<commit>, <date>)`.
 - The **dashboard header** (next to the title).
 - The **log file** (below) — its first line each launch is
-  `Token Counter 0.1.0 (<commit>, <date>) starting`.
+  `tokn 0.1.0 (<commit>, <date>) starting`.
 
 If that commit matches the latest commit on the branch, you're running the new
 build. If the icon still looks old but the commit is new, it's only Windows'
@@ -309,7 +309,7 @@ Any startup error is recorded there (and shown in a popup), along with the
 version line above. Send me that file's contents and I can pinpoint the cause.
 
 For an even louder view, double-click **`build_debug.bat`** to build
-`TokenCounter-debug.exe`, which keeps a **console window** open so startup
+`tokn-debug.exe`, which keeps a **console window** open so startup
 errors print directly.
 
 ## Tests

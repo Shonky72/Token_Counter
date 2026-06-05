@@ -35,22 +35,23 @@ jobs:
       - name: Build standalone .exe (clean)
         run: >
           python -m PyInstaller --clean --noconfirm --noconsole --onefile
-          --name TokenCounter --paths src
+          --name tokn --paths src
           --icon icon.ico --version-file version_info.txt
           --collect-all pystray --collect-all PIL --collect-all keyring
+          --collect-data token_counter
           run_token_counter.py
       - name: Upload .exe
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: TokenCounter-exe
-          path: dist/TokenCounter.exe
+          name: tokn-exe
+          path: dist/tokn.exe
           if-no-files-found: warn
       - name: Attach .exe to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/TokenCounter.exe
+          files: dist/tokn.exe
 
   msi:
     runs-on: windows-latest
@@ -76,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: TokenCounter-msi
+          name: tokn-msi
           path: dist/*.msi
           if-no-files-found: warn
       - name: Attach .msi to release

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from .engine import Engine
 from .icons import tray_meter_image
 from .models import Gauge, ProviderStatus
-from .render import human, overall_percent, tooltip_text
+from .render import human, overall_percent, tray_title
 
 
 def _make_icon_image(percent: float | None):
@@ -70,7 +70,7 @@ class TrayApp:
         items.append(Menu.SEPARATOR)
         from ._buildinfo import build_string
 
-        items.append(MenuItem(f"Token Counter v{build_string()}", None, enabled=False))
+        items.append(MenuItem(f"tokn v{build_string()}", None, enabled=False))
         # Default action (left-click the tray icon) opens the dashboard.
         items.append(MenuItem("Open dashboard", self._on_dashboard, default=True))
         items.append(MenuItem("Compact view", self._on_popup))
@@ -93,7 +93,7 @@ class TrayApp:
             return
         with self._lock:
             statuses = list(self._statuses)
-        self._icon.title = "Token Counter\n" + tooltip_text(statuses)
+        self._icon.title = tray_title(statuses)
         self._icon.icon = _make_icon_image(overall_percent(statuses))
         self._icon.menu = self._build_menu()
 
@@ -168,9 +168,9 @@ class TrayApp:
         with self._lock:
             statuses = list(self._statuses)
         self._icon = pystray.Icon(
-            "token_counter",
+            "tokn",
             icon=_make_icon_image(overall_percent(statuses)),
-            title="Token Counter\n" + tooltip_text(statuses),
+            title=tray_title(statuses),
             menu=self._build_menu(),
         )
         threading.Thread(target=self._loop, daemon=True).start()
