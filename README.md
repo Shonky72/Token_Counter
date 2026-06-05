@@ -212,6 +212,29 @@ python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
 `build.bat` also embeds the app icon into the `.exe`, drops a **"Token Counter"
 shortcut on your Desktop**, and offers to launch the app when it finishes.
 
+### Build a .msi installer
+
+For a "proper" installer (Start Menu + Desktop shortcuts, shows up in Add/Remove
+Programs), double-click **`build_msi.bat`**. It uses
+[cx_Freeze](https://cx-freeze.readthedocs.io) to produce:
+
+```
+dist\TokenCounter-0.1.0-win64.msi
+```
+
+Double-click that `.msi` to install. It's a **per-user install (no admin
+prompt)** to `%LOCALAPPDATA%\Programs\TokenCounter`, and uninstalls from
+Windows Settings → Apps like any normal program. Share the single `.msi` with
+friends — each person enters their own API keys after installing.
+
+To install **system-wide** instead (all users, requires admin), edit
+`setup_msi.py`: set `all_users` to `True` and `initial_target_dir` to
+`r"[ProgramFilesFolder]\TokenCounter"`.
+
+> `.msi` vs the bare `.exe`: the `.exe` from `build.bat` is one portable file you
+> can copy anywhere; the `.msi` is a real installer that registers the app with
+> Windows. Both run the exact same program — pick whichever you prefer to share.
+
 ### Uninstalling
 
 Double-click **`uninstall.bat`** (or run `token-counter uninstall`). It removes
