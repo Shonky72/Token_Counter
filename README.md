@@ -88,6 +88,7 @@ token-counter login           # the sign-in window
 token-counter startup enable  # launch on Windows startup (also: disable | status)
 token-counter shortcut        # create a Desktop shortcut (Windows)
 token-counter icon icon.ico   # write the app icon as a .ico
+token-counter uninstall       # remove startup entry, shortcut, and saved keys
 token-counter status          # headless: print current limits/usage
 token-counter providers       # list registered provider plugin types
 ```
@@ -208,8 +209,16 @@ python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
     run_token_counter.py
 ```
 
-`build.bat` also embeds the app icon into the `.exe` and drops a **"Token
-Counter" shortcut on your Desktop**.
+`build.bat` also embeds the app icon into the `.exe`, drops a **"Token Counter"
+shortcut on your Desktop**, and offers to launch the app when it finishes.
+
+### Uninstalling
+
+Double-click **`uninstall.bat`** (or run `token-counter uninstall`). It removes
+the startup entry, the Desktop shortcut, and your saved API keys — without
+touching the program files. Add `--purge` to also delete the
+`~/.token_counter` config/ledger folder, or `--keep-keys` to leave credentials
+in place.
 
 **Sharing with friends:** send them just `TokenCounter.exe`. On first run it
 writes a default config to `~/.token_counter/config.yaml` and opens the sign-in

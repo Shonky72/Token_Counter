@@ -65,4 +65,11 @@ echo.
 echo Copy TokenCounter.exe anywhere and double-click to run it.
 echo Friends can run the same file and enter their own API keys.
 echo.
+
+set /p launch=Launch Token Counter now? (Y/N):
+if /I "%launch%"=="Y" (
+  start "" "dist\TokenCounter.exe"
+  echo Started! Look for the bar-chart icon near your clock ^(click the ^^ arrow^).
+)
+echo.
 pause

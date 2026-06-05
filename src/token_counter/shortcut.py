@@ -42,6 +42,23 @@ def create_desktop_shortcut(
         "$s.Save(); "
         "Write-Output $s.FullName"
     )
+    return _run_ps(script, "shortcut creation failed")
+
+
+def remove_desktop_shortcut(name: str = "Token Counter") -> tuple[bool, str]:
+    """Delete ``<Desktop>/<name>.lnk`` if present. Returns (ok, message)."""
+    if not is_supported():
+        return False, "desktop shortcuts are only supported on Windows"
+    lnk = "[IO.Path]::Combine([Environment]::GetFolderPath('Desktop')," + _ps_quote(f"{name}.lnk") + ")"
+    script = (
+        f"$p = {lnk}; "
+        "if (Test-Path $p) { Remove-Item $p -Force; Write-Output 'removed' } "
+        "else { Write-Output 'absent' }"
+    )
+    return _run_ps(script, "shortcut removal failed")
+
+
+def _run_ps(script: str, fail_msg: str) -> tuple[bool, str]:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
@@ -50,5 +67,5 @@ def create_desktop_shortcut(
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"could not run PowerShell: {exc}"
     if result.returncode != 0:
-        return False, result.stderr.strip() or "shortcut creation failed"
-    return True, result.stdout.strip() or "created"
+        return False, result.stderr.strip() or fail_msg
+    return True, result.stdout.strip() or "ok"
