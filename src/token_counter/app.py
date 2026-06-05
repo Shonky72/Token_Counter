@@ -49,7 +49,9 @@ def _cmd_run(args) -> int:
         print("[token-counter] no credentials found — opening the login window.")
         import subprocess
 
-        subprocess.Popen([sys.executable, "-m", "token_counter", "login", "-c", args.config])
+        from .relaunch import subprocess_args
+
+        subprocess.Popen(subprocess_args("login", args.config))
 
     server = None
     if config.server.enabled:

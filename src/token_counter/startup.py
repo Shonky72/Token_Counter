@@ -24,6 +24,9 @@ def is_supported() -> bool:
 
 def startup_command() -> str:
     """The command Windows should run at login (quoted, no console window)."""
+    # Frozen single-exe: just launch the exe itself.
+    if getattr(sys, "frozen", False):
+        return f'"{Path(sys.executable)}"'
     exe = Path(sys.executable)
     # Prefer pythonw.exe so no console flashes on login.
     pythonw = exe.with_name("pythonw.exe")

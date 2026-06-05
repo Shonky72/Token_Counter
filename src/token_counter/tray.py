@@ -135,12 +135,11 @@ class TrayApp:
     # --- menu callbacks ------------------------------------------------
     def _spawn(self, command: str) -> None:
         # Launch a Tkinter window in its own process so it owns the main thread
-        # (Tk and pystray can't share one).
-        args = [sys.executable, "-m", "token_counter", command]
-        if self.config_path:
-            args += ["-c", self.config_path]
+        # (Tk and pystray can't share one). Frozen-exe aware.
+        from .relaunch import subprocess_args
+
         try:
-            subprocess.Popen(args)
+            subprocess.Popen(subprocess_args(command, self.config_path))
         except Exception as exc:  # pragma: no cover
             print(f"[token-counter] could not open {command} window: {exc}")
 
