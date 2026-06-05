@@ -43,6 +43,23 @@ class CardVM:
     error: str | None = None
     provider: str = ""          # raw provider name (for logo lookup)
     scheme: str | None = None   # e.g. "anthropic" (helps pick the logo)
+    used: int = 0               # primary gauge values (for the count-up animation)
+    limit: int | None = None
+    unit: str = "tokens"
+
+
+def ease_out_frames(start: int, target: int, steps: int = 18) -> list[int]:
+    """Ease-out integer frames from ``start`` to ``target`` (last == target)."""
+    if steps < 1 or start == target:
+        return [target]
+    frames = []
+    span = target - start
+    for i in range(1, steps + 1):
+        t = i / steps
+        eased = 1 - (1 - t) ** 3  # cubic ease-out
+        frames.append(round(start + span * eased))
+    frames[-1] = target
+    return frames
 
 
 @dataclass
@@ -153,6 +170,7 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
         primary_text=primary_text, sub_lines=sub_lines,
         reset_text=reset_text, detail=status.detail,
         provider=status.provider, scheme=scheme,
+        used=primary.used, limit=primary.limit, unit=primary.unit,
     )
 
 

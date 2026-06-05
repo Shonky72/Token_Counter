@@ -7,27 +7,26 @@ PIL = pytest.importorskip("PIL")
 from token_counter import icons, logos
 
 
-def test_tray_meter_image_size_and_mode():
-    img = icons.tray_meter_image(64, 50)
-    assert img.size == (64, 64)
+def test_app_icon_image_fallback():
+    icons.app_icon_image.cache_clear()
+    img = icons.app_icon_image(128)
+    assert img.size == (128, 128)
     assert img.mode == "RGBA"
 
 
-def test_meter_lights_more_bars_as_usage_rises():
-    # crude: a red (high) meter should have more non-transparent pixels than an
-    # almost-empty one, since more bars are lit.
-    def lit_pixels(p):
-        alpha = icons.tray_meter_image(64, p).getchannel("A").tobytes()
-        return sum(1 for b in alpha if b > 0)
-
-    assert lit_pixels(95) >= lit_pixels(10)
-
-
-def test_app_icon_image():
-    assert icons.app_icon_image(128).size == (128, 128)
+def test_app_icon_uses_user_png(tmp_path, monkeypatch):
+    png = tmp_path / "app_icon.png"
+    PIL.Image.new("RGBA", (20, 20), (255, 0, 0, 255)).save(png)
+    monkeypatch.setattr(icons, "_icon_png_path", lambda: png)
+    icons.app_icon_image.cache_clear()
+    img = icons.app_icon_image(32)
+    assert img.size == (32, 32)
+    assert img.getpixel((16, 16))[0] > 200  # red from our PNG
+    icons.app_icon_image.cache_clear()
 
 
 def test_write_ico(tmp_path):
+    icons.app_icon_image.cache_clear()
     path = tmp_path / "icon.ico"
     icons.write_ico(str(path))
     assert path.exists() and path.stat().st_size > 0

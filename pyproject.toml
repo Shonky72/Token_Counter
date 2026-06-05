@@ -27,7 +27,7 @@ token-counter = "token_counter.app:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-token_counter = ["assets/fonts/*.ttf", "assets/fonts/OFL.txt"]
+token_counter = ["assets/fonts/*.ttf", "assets/fonts/OFL.txt", "assets/*.png"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

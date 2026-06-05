@@ -107,10 +107,28 @@ def test_ensure_config_creates_valid_default(tmp_path):
     assert not path.exists()
     ensure_config(path)
     assert path.exists()
-    # The baked-in default must parse and define the expected providers.
+    # The default starts empty — services are added from the login window.
     cfg = load_config(path)
-    names = {p.name for p in cfg.providers}
-    assert {"claude", "openai", "gemini"} <= names
+    assert cfg.providers == []
+
+
+def test_add_and_remove_provider_roundtrip(tmp_path):
+    from token_counter.config import add_provider, remove_provider
+
+    path = tmp_path / "config.yaml"
+    ensure_config(path)
+    add_provider(path, "claude")
+    add_provider(path, "openai")
+    add_provider(path, "claude")  # idempotent
+    names = [p.name for p in load_config(path).providers]
+    assert names == ["claude", "openai"]
+    # The catalog template carries display options through.
+    claude = next(p for p in load_config(path).providers if p.name == "claude")
+    assert claude.type == "rate_limit"
+    assert claude.option("scheme") == "anthropic"
+
+    remove_provider(path, "claude")
+    assert [p.name for p in load_config(path).providers] == ["openai"]
 
 
 def test_ensure_config_does_not_overwrite(tmp_path):

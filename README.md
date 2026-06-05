@@ -49,22 +49,31 @@ traffic? Set `probe: true` on the provider to actively hit the provider's
 
 ---
 
-## Login screen
+## Login screen (add services)
 
-`token-counter login` (or right-click the tray → **Accounts / Login…**) opens a
-sign-in window. Per provider you get **both** methods:
+`tokn` opens the sign-in window automatically on first run (also: right-click the
+tray → **Accounts / Login…**, the dashboard's **Sign in / Accounts** button, or
+`token-counter login`). It starts **empty**:
 
-- **API key** — paste it and click *Validate & Save*. The app makes a live probe
-  call to confirm the key works, then stores it in **Windows Credential
-  Manager** (via `keyring`; a permission-locked local file is the fallback).
-- **OAuth** — click *Sign in with OAuth* (for providers with an `oauth:` block in
-  config, e.g. Google). Your browser opens, you authorize, and the token is
-  captured via a localhost redirect (Authorization Code + PKCE) and stored.
+- Pick a service from the **Add a service** dropdown (Claude, ChatGPT, Gemini)
+  and click **Add** — only services you add appear here, on the dashboard, and in
+  the tray.
+- Each added service has an **ⓘ** button with exactly where to get its API key.
+- Paste the key and click **Validate & Save**. tokn confirms the key and makes
+  **one tiny API call** to load that provider's live limits immediately (cost is
+  a fraction of a cent), then stores the key in **Windows Credential Manager**
+  (via `keyring`; a permission-locked local file is the fallback).
 
-> There is **no** username/password-into-the-web-account option — AI providers
-> don't allow logging into a consumer Claude.ai/Gemini account programmatically.
-> API keys and OAuth are the supported credentials, which is what this screen
-> uses.
+> **What this tracks:** your **developer API** usage (the API key you create on
+> the provider's console). It is *not* your Claude.ai Pro / ChatGPT Plus / Gemini
+> app subscription — those expose no usage to outside tools, so no app can show
+> them. Gemini has no live API limits either, so it tracks usage you report.
+
+## App icon
+
+The tray, every window, and the `.exe` use `src/token_counter/assets/app_icon.png`
+if present. Drop your icon there before building; otherwise a generated
+colour-grid icon is used.
 
 ---
 
