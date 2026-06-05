@@ -62,6 +62,26 @@ def ease_out_frames(start: int, target: int, steps: int = 18) -> list[int]:
     return frames
 
 
+def reel_frames(target: int, spin: int = 14, settle: int = 12, seed: int | None = None) -> list[int]:
+    """Slot-machine reel: ``spin`` fast random values, then ease into ``target``.
+
+    Deterministic length (``spin + settle``); last frame is exactly ``target``.
+    The random spin values sit in the target's magnitude so the digits look like
+    they're rolling. Pass ``seed`` for reproducible tests.
+    """
+    import random
+
+    rng = random.Random(seed)
+    if target <= 0:
+        return ease_out_frames(0, target, settle)
+    hi = max(target, 10)
+    lo = max(0, target // 3)
+    frames = [rng.randint(lo, hi) for _ in range(spin)]
+    frames += ease_out_frames(frames[-1] if frames else 0, target, settle)
+    frames[-1] = target
+    return frames
+
+
 @dataclass
 class CompactVM:
     title: str

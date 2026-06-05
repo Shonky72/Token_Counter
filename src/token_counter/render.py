@@ -65,29 +65,33 @@ def tooltip_text(statuses: list[ProviderStatus]) -> str:
     return "\n".join(lines)
 
 
-def tray_title(statuses: list[ProviderStatus], app_name: str = "tokn", limit: int = 120) -> str:
-    """Compact tray-icon title, hard-capped for the Windows 128-char szTip limit.
+def _tray_part(s: ProviderStatus, mode: str) -> str:
+    """One provider's hover line. ``mode``: 'amounts' | 'percent'."""
+    if s.error:
+        return f"{s.provider}: no data"
+    g = _primary_gauge(s)
+    if g is None:
+        return f"{s.provider}: —"
+    if mode == "percent" and g.percent is not None:
+        return f"{s.provider}: {g.percent:.0f}%"
+    if g.limit is not None:
+        return f"{s.provider}: {human(g.used)}/{human(g.limit)}"
+    return f"{s.provider}: {human(g.used)}"
 
-    The full per-gauge detail lives in the menu and dashboard; the hover tooltip
-    just needs a short per-provider summary that can never exceed the limit (or
-    pystray's Shell_NotifyIcon raises and the icon never appears).
+
+def tray_title(statuses: list[ProviderStatus], app_name: str = "tokn", limit: int = 120) -> str:
+    """Tray-icon hover title showing per-provider amounts (e.g. ``claude: 28K/40K``).
+
+    Hard-capped for the Windows 128-char szTip limit with a tiered fallback so it
+    never trips ``Shell_NotifyIcon`` (which made the icon vanish): full amounts →
+    percent-only → truncate.
     """
-    parts: list[str] = []
-    for s in statuses:
-        if s.error:
-            parts.append(f"{s.provider}: no data")
-            continue
-        g = _primary_gauge(s)
-        if g is None:
-            parts.append(f"{s.provider}: —")
-        elif g.percent is not None:
-            parts.append(f"{s.provider}: {g.percent:.0f}%")
-        else:
-            parts.append(f"{s.provider}: {human(g.used)}")
-    text = app_name + ("\n" + "\n".join(parts) if parts else "")
-    if len(text) > limit:
-        text = text[: limit - 1].rstrip() + "…"
-    return text
+    for mode in ("amounts", "percent"):
+        parts = [_tray_part(s, mode) for s in statuses]
+        text = app_name + ("\n" + "\n".join(parts) if parts else "")
+        if len(text) <= limit:
+            return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 

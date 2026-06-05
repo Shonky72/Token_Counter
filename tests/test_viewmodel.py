@@ -10,6 +10,7 @@ from token_counter.viewmodel import (
     ease_out_frames,
     format_count,
     format_duration,
+    reel_frames,
 )
 
 
@@ -22,6 +23,18 @@ def test_ease_out_frames_ends_on_target():
 
 def test_ease_out_frames_noop_when_equal():
     assert ease_out_frames(500, 500) == [500]
+
+
+def test_reel_frames_ends_on_target():
+    frames = reel_frames(40000, spin=14, settle=12, seed=1)
+    assert frames[-1] == 40000
+    assert len(frames) == 26
+    # The spin phase should jump around (not be monotonic), unlike a plain count-up.
+    assert frames[:14] != sorted(frames[:14])
+
+
+def test_reel_frames_zero_target():
+    assert reel_frames(0)[-1] == 0
 
 
 def test_format_duration():

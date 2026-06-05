@@ -47,9 +47,14 @@ class TrayApp:
         self.config_path = config_path
         self.default_view = default_view
         self._statuses: list[ProviderStatus] = []
+        self._last_refresh = None  # local datetime of the last successful refresh
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._icon = None
+
+    def _refresh_label(self) -> str:
+        when = self._last_refresh.strftime("%H:%M:%S") if self._last_refresh else "never"
+        return f"Refresh now (last: {when})"
 
     def _build_menu(self):
         from pystray import Menu, MenuItem
@@ -79,7 +84,7 @@ class TrayApp:
         items.append(MenuItem(
             "Open on startup", self._on_toggle_startup, checked=lambda i: self._startup_enabled()
         ))
-        items.append(MenuItem("Refresh now", self._on_refresh))
+        items.append(MenuItem(self._refresh_label, self._on_refresh))
         items.append(MenuItem("Quit", self._on_quit))
         return Menu(*items)
 
@@ -102,6 +107,7 @@ class TrayApp:
         statuses = self.engine.snapshot(datetime.now(timezone.utc))
         with self._lock:
             self._statuses = statuses
+            self._last_refresh = datetime.now()  # local time for the menu label
         self._apply()
 
     def _loop(self) -> None:

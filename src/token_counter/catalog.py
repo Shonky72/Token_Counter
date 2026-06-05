@@ -5,6 +5,10 @@ Each entry is everything needed to (a) populate the "add a service" dropdown,
 provider block into the user's config. One key per service; all of that
 service's models are tracked under it automatically.
 
+Most services speak the OpenAI-compatible API (``scheme="openai"``) but on
+different base URLs, so each carries a ``base_url`` and a cheap ``test_model``
+used to fetch live rate-limit headers right after a key is saved.
+
 Note: these track the *developer API* (your API key), not the consumer web/app
 subscription — the apps expose no usage to outside tools.
 """
@@ -16,65 +20,96 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Service:
-    key: str                 # internal id + provider name in config
-    display_name: str        # shown on the card
-    type: str                # provider plugin type
-    scheme: str | None       # rate-limit header scheme (rate_limit providers)
-    key_url: str             # where to create an API key
-    help: str                # short, friendly steps
+    key: str                      # internal id + provider name in config
+    display_name: str             # shown on the card
+    type: str                     # provider plugin type
+    scheme: str | None            # rate-limit header scheme
+    key_url: str                  # where to create an API key
+    help: str                     # short, friendly steps
+    base_url: str | None = None   # API base (for openai-compatible providers)
+    test_model: str | None = None # cheap model id for the live-limits probe
     options: dict = field(default_factory=dict)  # extra provider options
 
     def provider_config(self) -> dict:
         cfg = {"name": self.key, "type": self.type, "display_name": self.display_name}
         if self.scheme:
             cfg["scheme"] = self.scheme
+        if self.base_url:
+            cfg["base_url"] = self.base_url
+        if self.test_model:
+            cfg["test_model"] = self.test_model
         cfg.update(self.options)
         return cfg
 
 
+def _openai_compatible(key, name, key_url, base_url, model, note=""):
+    return Service(
+        key=key, display_name=name, type="rate_limit", scheme="openai",
+        key_url=key_url, base_url=base_url, test_model=model,
+        help=(f"1. Open {key_url.split('//')[-1].split('/')[0]} and sign in.\n"
+              f"2. Create an API key.\n"
+              f"3. Copy it and paste it here." + (f"\n\n{note}" if note else "")),
+        options={"display": "ring", "primary": "tokens"},
+    )
+
+
 SERVICES: dict[str, Service] = {
     "claude": Service(
-        key="claude",
-        display_name="Claude",
-        type="rate_limit",
-        scheme="anthropic",
+        key="claude", display_name="Claude", type="rate_limit", scheme="anthropic",
         key_url="https://console.anthropic.com/settings/keys",
-        help=(
-            "1. Open console.anthropic.com and sign in.\n"
-            "2. Settings → API keys → Create Key.\n"
-            "3. Copy the key (starts with sk-ant-) and paste it here.\n\n"
-            "Note: this is your developer API key — separate from Claude.ai Pro."
-        ),
+        base_url="https://api.anthropic.com", test_model="claude-3-5-haiku-latest",
+        help=("1. Open console.anthropic.com and sign in.\n"
+              "2. Settings → API keys → Create Key.\n"
+              "3. Copy the key (starts with sk-ant-) and paste it here.\n\n"
+              "Note: developer API key — separate from Claude.ai Pro."),
         options={"display": "ring", "primary": "requests"},
     ),
     "openai": Service(
-        key="openai",
-        display_name="ChatGPT",
-        type="rate_limit",
-        scheme="openai",
+        key="openai", display_name="ChatGPT", type="rate_limit", scheme="openai",
         key_url="https://platform.openai.com/api-keys",
-        help=(
-            "1. Open platform.openai.com and sign in.\n"
-            "2. API keys → Create new secret key.\n"
-            "3. Copy the key (starts with sk-) and paste it here.\n\n"
-            "Note: the developer API is billed separately from ChatGPT Plus."
-        ),
+        base_url="https://api.openai.com/v1", test_model="gpt-4o-mini",
+        help=("1. Open platform.openai.com and sign in.\n"
+              "2. API keys → Create new secret key.\n"
+              "3. Copy the key (starts with sk-) and paste it here.\n\n"
+              "Note: the developer API is billed separately from ChatGPT Plus."),
         options={"display": "ring", "primary": "tokens"},
     ),
     "gemini": Service(
-        key="gemini",
-        display_name="Gemini",
-        type="gemini",
-        scheme=None,
+        key="gemini", display_name="Gemini", type="gemini", scheme=None,
         key_url="https://aistudio.google.com/app/apikey",
-        help=(
-            "1. Open aistudio.google.com and sign in.\n"
-            "2. Get API key → Create API key.\n"
-            "3. Copy it and paste it here.\n\n"
-            "Note: Google exposes no live limits, so Gemini shows usage you report."
-        ),
+        help=("1. Open aistudio.google.com and sign in.\n"
+              "2. Get API key → Create API key.\n"
+              "3. Copy it and paste it here.\n\n"
+              "Note: Google exposes no live limits, so Gemini shows usage you report."),
         options={"display": "bar", "budget": {"period": "monthly", "limit": 2000000}},
     ),
+    "grok": _openai_compatible(
+        "grok", "Grok", "https://console.x.ai", "https://api.x.ai/v1", "grok-2-latest"),
+    "deepseek": _openai_compatible(
+        "deepseek", "DeepSeek", "https://platform.deepseek.com/api_keys",
+        "https://api.deepseek.com", "deepseek-chat"),
+    "mistral": _openai_compatible(
+        "mistral", "Mistral", "https://console.mistral.ai/api-keys",
+        "https://api.mistral.ai/v1", "mistral-small-latest"),
+    "groq": _openai_compatible(
+        "groq", "Groq", "https://console.groq.com/keys",
+        "https://api.groq.com/openai/v1", "llama-3.1-8b-instant"),
+    "perplexity": _openai_compatible(
+        "perplexity", "Perplexity", "https://www.perplexity.ai/settings/api",
+        "https://api.perplexity.ai", "sonar"),
+    "openrouter": _openai_compatible(
+        "openrouter", "OpenRouter", "https://openrouter.ai/keys",
+        "https://openrouter.ai/api/v1", "openai/gpt-4o-mini"),
+    "together": _openai_compatible(
+        "together", "Together AI", "https://api.together.xyz/settings/api-keys",
+        "https://api.together.xyz/v1", "meta-llama/Llama-3.1-8B-Instruct-Turbo"),
+    "fireworks": _openai_compatible(
+        "fireworks", "Fireworks AI", "https://fireworks.ai/account/api-keys",
+        "https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3p1-8b-instruct"),
+    "cohere": _openai_compatible(
+        "cohere", "Cohere", "https://dashboard.cohere.com/api-keys",
+        "https://api.cohere.ai/compatibility/v1", "command-r",
+        note="Cohere's rate-limit headers are partial; some gauges may show no data."),
 }
 
 

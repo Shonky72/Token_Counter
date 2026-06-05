@@ -11,7 +11,8 @@ from functools import lru_cache
 from pathlib import Path
 
 N_BARS = 5
-_GRID_COLORS = [(74, 144, 217), (230, 140, 60), (70, 175, 110), (130, 130, 140)]
+# Four row colours matching the brand mark: blue, orange, green, grey.
+_GRID_COLORS = [(83, 152, 219), (237, 142, 66), (84, 176, 111), (138, 138, 144)]
 
 
 def _icon_png_path() -> Path | None:
@@ -38,10 +39,13 @@ def _draw_grid(size: int):
     row_h = (size - 2 * pad - gap * (rows - 1)) / rows
     radius = max(1, cell_w * 0.3)
     for r in range(rows):
-        color = _GRID_COLORS[r % len(_GRID_COLORS)]
+        base = _GRID_COLORS[r % len(_GRID_COLORS)]
         ry = pad + r * (row_h + gap)
         for c in range(cols):
             frac = 0.45 + 0.55 * (c / (cols - 1))  # ascending heights
+            # Slightly darken toward the right for a touch of depth.
+            shade = 1.0 - 0.10 * (c / (cols - 1))
+            color = tuple(max(0, int(v * shade)) for v in base)
             bh = row_h * frac
             x0 = pad + c * (cell_w + gap)
             y0 = ry + (row_h - bh)

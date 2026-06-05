@@ -29,72 +29,53 @@ def _request(url: str, headers: dict, data: bytes | None = None) -> tuple[bool, 
         return False, f"network error: {exc}", {}
 
 
-def probe_anthropic(api_key: str) -> tuple[bool, str, dict]:
-    return _request(
-        "https://api.anthropic.com/v1/models",
-        {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-    )
-
-
-def probe_openai(api_key: str) -> tuple[bool, str, dict]:
-    return _request(
-        "https://api.openai.com/v1/models",
-        {"Authorization": f"Bearer {api_key}"},
-    )
-
-
-def probe_google(api_key: str) -> tuple[bool, str, dict]:
-    return _request(
-        f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
-        {},
-    )
-
-
-PROBES = {
-    "anthropic": probe_anthropic,
-    "openai": probe_openai,
-    "google": probe_google,
-}
-
-
-def probe(scheme: str, api_key: str) -> tuple[bool, str, dict]:
-    fn = PROBES.get(scheme)
-    if fn is None:
-        if api_key.strip():
-            return True, "saved (no probe available for this scheme)", {}
+def probe(scheme: str, api_key: str, base_url: str | None = None) -> tuple[bool, str, dict]:
+    """Confirm a key works via the provider's cheap *list models* endpoint."""
+    if not api_key.strip():
         return False, "empty credential", {}
-    return fn(api_key)
+    if scheme == "anthropic":
+        url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/models"
+        return _request(url, {"x-api-key": api_key, "anthropic-version": "2023-06-01"})
+    if scheme == "openai":
+        url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
+        return _request(url, {"Authorization": f"Bearer {api_key}"})
+    if scheme == "google":
+        return _request(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", {}
+        )
+    return True, "saved (no probe available for this scheme)", {}
 
 
 # --- live rate-limit fetch (one tiny generation call) ----------------------
 # A minimal request that returns the *token* rate-limit headers, so the gauge
 # fills the moment a key is saved. Cost is a fraction of a cent.
 
-def fetch_rate_limits(scheme: str, api_key: str) -> tuple[bool, str, dict]:
+def fetch_rate_limits(
+    scheme: str, api_key: str, base_url: str | None = None, model: str | None = None
+) -> tuple[bool, str, dict]:
     """Return (ok, message, headers) from a minimal live call for ``scheme``."""
     if scheme == "anthropic":
+        url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/messages"
         body = json.dumps({
-            "model": "claude-3-5-haiku-latest",
+            "model": model or "claude-3-5-haiku-latest",
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "hi"}],
         }).encode()
         return _request(
-            "https://api.anthropic.com/v1/messages",
-            {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            url,
+            {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+             "content-type": "application/json"},
             data=body,
         )
     if scheme == "openai":
+        url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/chat/completions"
         body = json.dumps({
-            "model": "gpt-4o-mini",
+            "model": model or "gpt-4o-mini",
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "hi"}],
         }).encode()
         return _request(
-            "https://api.openai.com/v1/chat/completions",
+            url,
             {"Authorization": f"Bearer {api_key}", "content-type": "application/json"},
             data=body,
         )

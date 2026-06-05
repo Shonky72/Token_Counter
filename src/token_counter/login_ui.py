@@ -63,10 +63,17 @@ class LoginWindow:
 
         from .fonts import app_font_family
 
+        from . import state as state_mod
+
         self.root = tk.Tk()
         self.root.title("tokn — Accounts")
-        self.root.geometry("720x520")
         self.root.minsize(620, 420)
+        self.root.geometry(state_mod.get("login_geometry", "720x520"))
+        self.root.protocol(
+            "WM_DELETE_WINDOW",
+            lambda: (state_mod.set("login_geometry", self.root.geometry()),
+                     self.root.destroy()),
+        )
         self._set_icon(self.root)
 
         header = ttk.Frame(self.root, padding=(16, 14, 16, 4))

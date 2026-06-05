@@ -20,13 +20,14 @@ from .engine import Engine
 from .icons import app_icon_image
 from .ledger import Ledger
 from .logos import provider_logo_image
+from . import state as state_mod
 from .viewmodel import (
     CardVM,
     CompactVM,
     build_cards,
     build_compact,
-    ease_out_frames,
     format_count,
+    reel_frames,
 )
 
 # Dark theme palette (matches the mockup).
@@ -109,10 +110,14 @@ class Dashboard:
         self.root = tk.Tk()
         self.root.title("tokn")
         self.root.configure(bg=BG)
-        self.root.geometry("440x560")
         self.root.minsize(380, 360)
+        # Restore last position/size if we have one, else a sensible default.
+        self.root.geometry(state_mod.get("dashboard_geometry", "440x560"))
         self._photos: list = []  # keep refs so Tk doesn't garbage-collect images
+        self._save_job = None
         _set_window_icon(self.root, self._photos)
+        self.root.bind("<Configure>", self._on_configure)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._build_header()
         self.body = tk.Frame(self.root, bg=BG)
@@ -284,22 +289,46 @@ class Dashboard:
         c["used"] = vm.used
 
     def _animate_number(self, c, start, target):
+        # Slot-machine reel: spin fast, then settle on the value.
         if c.get("anim") is not None:
             try:
                 self.root.after_cancel(c["anim"])
             except Exception:
                 pass
             c["anim"] = None
-        frames = ease_out_frames(start, target, steps=18)
+        frames = reel_frames(target)
 
         def step(i=0):
             c["num_var"].set(format_count(frames[i], c["limit"], c["unit"]))
             if i + 1 < len(frames):
-                c["anim"] = self.root.after(22, lambda: step(i + 1))
+                # Faster during the spin, easing out as it settles.
+                delay = 35 if i < 14 else 55
+                c["anim"] = self.root.after(delay, lambda: step(i + 1))
             else:
                 c["anim"] = None
 
         step(0)
+
+    # --- window position memory ----------------------------------------
+    def _on_configure(self, event):
+        if event.widget is not self.root:
+            return
+        if self._save_job is not None:
+            try:
+                self.root.after_cancel(self._save_job)
+            except Exception:
+                pass
+        self._save_job = self.root.after(500, self._save_geometry)
+
+    def _save_geometry(self):
+        try:
+            state_mod.set("dashboard_geometry", self.root.geometry())
+        except Exception:
+            pass
+
+    def _on_close(self):
+        self._save_geometry()
+        self.root.destroy()
 
     # --- actions -------------------------------------------------------
     def _open_login(self):
