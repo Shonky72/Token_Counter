@@ -88,6 +88,7 @@ token-counter login           # the sign-in window
 token-counter startup enable  # launch on Windows startup (also: disable | status)
 token-counter shortcut        # create a Desktop shortcut (Windows)
 token-counter icon icon.ico   # write the app icon as a .ico
+token-counter uninstall       # remove startup entry, shortcut, and saved keys
 token-counter status          # headless: print current limits/usage
 token-counter providers       # list registered provider plugin types
 ```
@@ -196,8 +197,21 @@ extension point) are the two worked templates.
 
 ## Package as a standalone Windows .exe (shareable)
 
+> **Your friends do NOT need Python.** The built `TokenCounter.exe` bundles
+> Python and everything else inside it — it's one self-contained file. Only
+> *building* needs Python, and even that can be done for you (see "Get it
+> without building" below).
+
 **Easiest:** double-click **`build.bat`**. It installs what's needed and produces
 `dist\TokenCounter.exe` — one file you can copy anywhere or send to friends.
+
+### Get it without building (GitHub Actions)
+
+So nobody needs Python at all: the repo includes a workflow
+(`.github/workflows/build-windows.yml`) that builds `TokenCounter.exe` **and**
+the `.msi` on a Windows runner every push. Open the **Actions** tab → the latest
+run → download the **TokenCounter-exe** artifact. Share that file. Tagging a
+release also attaches both to the release page.
 
 Equivalent manual command:
 
@@ -208,8 +222,39 @@ python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
     run_token_counter.py
 ```
 
-`build.bat` also embeds the app icon into the `.exe` and drops a **"Token
-Counter" shortcut on your Desktop**.
+`build.bat` also embeds the app icon into the `.exe`, drops a **"Token Counter"
+shortcut on your Desktop**, and offers to launch the app when it finishes.
+
+### Build a .msi installer
+
+For a "proper" installer (Start Menu + Desktop shortcuts, shows up in Add/Remove
+Programs), double-click **`build_msi.bat`**. It uses
+[cx_Freeze](https://cx-freeze.readthedocs.io) to produce:
+
+```
+dist\TokenCounter-0.1.0-win64.msi
+```
+
+Double-click that `.msi` to install. It's a **per-user install (no admin
+prompt)** to `%LOCALAPPDATA%\Programs\TokenCounter`, and uninstalls from
+Windows Settings → Apps like any normal program. Share the single `.msi` with
+friends — each person enters their own API keys after installing.
+
+To install **system-wide** instead (all users, requires admin), edit
+`setup_msi.py`: set `all_users` to `True` and `initial_target_dir` to
+`r"[ProgramFilesFolder]\TokenCounter"`.
+
+> `.msi` vs the bare `.exe`: the `.exe` from `build.bat` is one portable file you
+> can copy anywhere; the `.msi` is a real installer that registers the app with
+> Windows. Both run the exact same program — pick whichever you prefer to share.
+
+### Uninstalling
+
+Double-click **`uninstall.bat`** (or run `token-counter uninstall`). It removes
+the startup entry, the Desktop shortcut, and your saved API keys — without
+touching the program files. Add `--purge` to also delete the
+`~/.token_counter` config/ledger folder, or `--keep-keys` to leave credentials
+in place.
 
 **Sharing with friends:** send them just `TokenCounter.exe`. On first run it
 writes a default config to `~/.token_counter/config.yaml` and opens the sign-in
@@ -229,6 +274,18 @@ trademarked, the app ships clean **brand-style glyphs** drawn in code (OpenAI
 ring, Claude sunburst, Gemini sparkle). To use the real logos, drop a PNG at
 `~/.token_counter/logos/<provider>.png` (e.g. `claude.png`) and it's picked up
 automatically.
+
+## If something goes wrong
+
+If the app seems to run (it's in Task Manager) but no tray icon or window
+appears, check the log file it writes on every launch:
+
+```
+%USERPROFILE%\.token_counter\token_counter.log
+```
+
+Any startup error is recorded there (and shown in a popup). Send me that file's
+contents and I can pinpoint the cause.
 
 ## Tests
 

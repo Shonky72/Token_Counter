@@ -153,6 +153,19 @@ def _cmd_icon(args) -> int:
     return 0
 
 
+def _cmd_uninstall(args) -> int:
+    from .uninstall import uninstall
+
+    print("[token-counter] uninstalling (startup entry, Desktop shortcut, saved keys)…")
+    results = uninstall(
+        remove_keys=not args.keep_keys, purge=args.purge, config_path=args.config
+    )
+    for line in results:
+        print(f"  - {line}")
+    print("[token-counter] done. (The program files themselves were not touched.)")
+    return 0
+
+
 def _cmd_shortcut(args) -> int:
     from . import startup as startup_mod
     from .relaunch import is_frozen
@@ -196,6 +209,11 @@ def build_parser() -> argparse.ArgumentParser:
     ic.add_argument("path", nargs="?", default="icon.ico")
     ic.set_defaults(func=_cmd_icon)
 
+    un = sub.add_parser("uninstall", help="remove startup entry, shortcut, and saved keys")
+    un.add_argument("--keep-keys", action="store_true", help="leave saved API keys in place")
+    un.add_argument("--purge", action="store_true", help="also delete the ~/.token_counter folder")
+    un.set_defaults(func=_cmd_uninstall)
+
     rec = sub.add_parser("record", help="record a usage event into the ledger")
     rec.add_argument("--provider", required=True)
     rec.add_argument("--model", required=True)
@@ -209,14 +227,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .bootstrap import init, report_fatal
+
+    init()  # make stdout/stderr safe + set the Windows AppUserModelID
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
         args.command = "run"
         args.func = _cmd_run
 
-    # Commands that don't need a config file at all.
-    NO_CONFIG = {"providers", "icon", "shortcut", "startup"}
+    # Commands that don't need a config file created for them.
+    NO_CONFIG = {"providers", "icon", "shortcut", "startup", "uninstall"}
     if args.command == "providers":
         return _cmd_providers(args)
 
@@ -232,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"[token-counter] config error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:  # never die silently in a windowed build
+        report_fatal(exc)
+        return 1
 
 
 if __name__ == "__main__":
