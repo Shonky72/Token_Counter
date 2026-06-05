@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from .auth import CredentialStore, load_credentials_into_env
-from .config import ConfigError, load_config
+from .config import ConfigError, ensure_config, load_config
 from .engine import Engine
 from .ledger import Ledger
 from .providers import registered_types
@@ -185,15 +185,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "providers":
         return _cmd_providers(args)
 
+    # Make a fresh download "just work": create a default config on first run.
+    if args.command != "startup":
+        created = not Path(args.config).expanduser().exists()
+        ensure_config(args.config)
+        if created:
+            print(f"[token-counter] created a default config at {args.config}")
+
     try:
         return args.func(args)
     except ConfigError as exc:
         print(f"[token-counter] config error: {exc}", file=sys.stderr)
-        if not Path(args.config).expanduser().exists():
-            print(
-                f"  Hint: copy config.example.yaml to {args.config} and edit it.",
-                file=sys.stderr,
-            )
         return 2
 
 

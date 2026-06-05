@@ -192,17 +192,26 @@ extension point) are the two worked templates.
 
 ---
 
-## Package as a standalone Windows .exe
+## Package as a standalone Windows .exe (shareable)
 
-```bash
-python -m pip install pyinstaller
-pyinstaller --noconsole --onefile --name TokenCounter ^
+**Easiest:** double-click **`build.bat`**. It installs what's needed and produces
+`dist\TokenCounter.exe` — one file you can copy anywhere or send to friends.
+
+Equivalent manual command:
+
+```bat
+python -m pip install -e . pyinstaller
+python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
     --collect-all pystray --collect-all PIL --collect-all keyring ^
-    src/token_counter/__main__.py
+    run_token_counter.py
 ```
 
-Drop `dist/TokenCounter.exe` into your Startup folder (`shell:startup`) so the
-widget launches with Windows.
+**Sharing with friends:** send them just `TokenCounter.exe`. On first run it
+writes a default config to `~/.token_counter/config.yaml` and opens the sign-in
+window automatically — each person enters **their own** API keys, which are
+saved in **their own** Windows Credential Manager. Nothing of yours travels with
+the file. (Windows SmartScreen may warn about an unsigned app the first time —
+*More info → Run anyway*.)
 
 ## Tests
 

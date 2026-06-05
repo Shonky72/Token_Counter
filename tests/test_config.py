@@ -5,6 +5,7 @@ import pytest
 from token_counter.config import (
     Budget,
     ConfigError,
+    ensure_config,
     load_config,
     parse_config,
     save_open_on_startup,
@@ -99,6 +100,24 @@ def test_startup_and_view_mode_defaults_and_parsing():
     cfg2 = parse_config({"open_on_startup": True, "view_mode": "compact", "providers": []})
     assert cfg2.open_on_startup is True
     assert cfg2.view_mode == "compact"
+
+
+def test_ensure_config_creates_valid_default(tmp_path):
+    path = tmp_path / "nested" / "config.yaml"
+    assert not path.exists()
+    ensure_config(path)
+    assert path.exists()
+    # The baked-in default must parse and define the expected providers.
+    cfg = load_config(path)
+    names = {p.name for p in cfg.providers}
+    assert {"claude", "openai", "gemini"} <= names
+
+
+def test_ensure_config_does_not_overwrite(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("refresh_seconds: 99\nproviders: []\n", encoding="utf-8")
+    ensure_config(path)
+    assert load_config(path).refresh_seconds == 99
 
 
 def test_save_open_on_startup_roundtrip(tmp_path):
