@@ -1,5 +1,4 @@
 # tokn
-# Tokn
 
 A Windows system-tray widget that shows a **live count of tokens used vs.
 remaining against the limits your AI provider actually enforces** — read
