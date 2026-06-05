@@ -89,6 +89,8 @@ class ServerConfig:
 class AppConfig:
     refresh_seconds: int = DEFAULT_REFRESH_SECONDS
     ledger_path: str = "~/.token_counter/ledger.db"
+    open_on_startup: bool = False
+    view_mode: str = "dashboard"  # "dashboard" | "compact"
     server: ServerConfig = field(default_factory=ServerConfig)
     providers: list[ProviderConfig] = field(default_factory=list)
 
@@ -151,9 +153,33 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     return AppConfig(
         refresh_seconds=int(raw.get("refresh_seconds", DEFAULT_REFRESH_SECONDS)),
         ledger_path=str(raw.get("ledger_path", "~/.token_counter/ledger.db")),
+        open_on_startup=bool(raw.get("open_on_startup", False)),
+        view_mode=str(raw.get("view_mode", "dashboard")),
         server=server,
         providers=providers,
     )
+
+
+def save_open_on_startup(path: str | Path, value: bool) -> None:
+    """Persist just the ``open_on_startup`` flag back to a YAML/JSON config.
+
+    Keeps the rest of the file intact when toggled from the UI.
+    """
+    path = Path(path).expanduser()
+    raw: dict[str, Any] = {}
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+        if path.suffix in {".yaml", ".yml"} and yaml is not None:
+            raw = yaml.safe_load(text) or {}
+        elif path.suffix not in {".yaml", ".yml"}:
+            raw = json.loads(text or "{}")
+    raw["open_on_startup"] = bool(value)
+    if path.suffix in {".yaml", ".yml"}:
+        if yaml is None:
+            raise ConfigError("PyYAML required to write YAML config")
+        path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    else:
+        path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
 def load_config(path: str | Path) -> AppConfig:

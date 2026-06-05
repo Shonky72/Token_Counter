@@ -16,11 +16,12 @@ from .providers import create_provider
 
 
 class Engine:
-    def __init__(self, config: AppConfig, ledger: Ledger):
+    def __init__(self, config: AppConfig, ledger: Ledger, store=None):
         self.config = config
         self.ledger = ledger
+        self.store = store
         self.providers = {
-            pc.name: create_provider(pc, ledger) for pc in config.providers
+            pc.name: create_provider(pc, ledger, store) for pc in config.providers
         }
 
     def snapshot(self, now: datetime | None = None) -> list[ProviderStatus]:

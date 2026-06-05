@@ -60,7 +60,12 @@ def _bucket_width(window_start: datetime, now: datetime) -> str:
 @register("anthropic_admin")
 class AnthropicAdminProvider(Provider):
     def _admin_key(self) -> str | None:
-        return self.config.secret("admin_key")
+        key = self.config.secret("admin_key")
+        if key:
+            return key
+        if self.store is not None:
+            return self.store.get(self.name, "api_key")
+        return None
 
     def poll(self, now: datetime | None = None) -> ProviderStatus:
         now = self._now(now)

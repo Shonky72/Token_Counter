@@ -81,11 +81,52 @@ cp config.example.yaml ~/.token_counter/config.yaml   # edit providers
 ## Run
 
 ```bash
-token-counter run         # tray + local server; opens login if not signed in
-token-counter login       # just the sign-in window
-token-counter status      # headless: print current limits/usage
-token-counter providers   # list registered provider plugin types
+token-counter run             # tray + local server; opens login if not signed in
+token-counter window          # the dashboard window (cards, rings/bars)
+token-counter popup           # the compact hover-style summary
+token-counter login           # the sign-in window
+token-counter startup enable  # launch on Windows startup (also: disable | status)
+token-counter status          # headless: print current limits/usage
+token-counter providers       # list registered provider plugin types
 ```
+
+Left-clicking the tray icon opens the dashboard; right-click gives **Open
+dashboard**, **Compact view**, **Accounts / Login…**, an **Open on startup**
+checkbox, **Refresh now**, and **Quit**.
+
+### Dashboard & compact views
+
+The dashboard mirrors a card per provider — a ring (or bar) gauge, the
+`used / limit` count (`1.7M / 2.0M tokens`, or `12 / 45 messages` for
+request limits), input/output sub-lines, and a live "Resets in 14m" countdown.
+Each provider's look is configurable:
+
+```yaml
+- name: claude
+  type: rate_limit
+  scheme: anthropic
+  display_name: Claude      # card title
+  display: ring             # ring | bar
+  primary: requests         # which window headlines the card ("messages")
+  color: "#d97757"          # optional accent override
+```
+
+The compact view is the same data as a small always-on-top popup near the tray.
+
+### Open on startup
+
+Toggle it from the tray menu, the dashboard's ⚙ Settings, or the CLI
+(`token-counter startup enable`). On Windows this adds a per-user
+`HKCU\…\Run` entry that launches the tray with `pythonw` (no console window) —
+no admin rights needed. The choice is mirrored into `open_on_startup` in your
+config so it survives reinstalls.
+
+### Sign in once — credentials are remembered
+
+API keys and OAuth tokens are saved in the OS keyring (Windows Credential
+Manager) the first time you sign in, and read back automatically on every
+launch. You never retype them after a reboot. Providers resolve their key
+straight from the keyring, so no environment-variable wiring is required.
 
 ## Reporting headers from your code
 
@@ -169,9 +210,10 @@ widget launches with Windows.
 python -m pytest
 ```
 
-53 tests cover config, ledger, rate-limit header parsing, providers, the engine,
-rendering, the HTTP server, credential storage, and the OAuth PKCE/redirect
-logic — all headless (no tray/browser/display required).
+65 tests cover config, ledger, rate-limit header parsing, providers, the engine,
+rendering, the view-model (cards/compact), startup plumbing, the HTTP server,
+credential storage, and the OAuth PKCE/redirect logic — all headless (no
+tray/browser/display required).
 
 ## Project layout
 
@@ -185,11 +227,14 @@ src/token_counter/
   engine.py        # build providers, poll them
   render.py        # tooltip / detail text
   server.py        # localhost /usage + /ratelimit endpoints
-  auth.py          # keyring-backed credential store
+  auth.py          # keyring-backed credential store (remembered sign-in)
   oauth.py         # OAuth Authorization Code + PKCE (loopback)
+  startup.py       # launch-on-Windows-startup (HKCU Run key)
+  viewmodel.py     # dashboard/compact presentation model (pure, tested)
   login_ui.py      # Tkinter sign-in window (API key + OAuth)
+  window_ui.py     # Tkinter dashboard + compact popup (cards, rings/bars)
   tray.py          # pystray tray icon (Windows)
-  app.py           # CLI: run / login / status / record / providers
+  app.py           # CLI: run / window / popup / login / startup / status / …
   providers/
     base.py            # Provider ABC + registry
     rate_limit.py      # provider-enforced live limits (Anthropic/OpenAI)

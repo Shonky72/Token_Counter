@@ -58,7 +58,7 @@ class RateLimitProvider(Provider):
     def _maybe_probe(self) -> None:
         if not self.config.option("probe", False):
             return
-        secret = self.config.secret("api_key")
+        secret = self.api_key()
         if not secret:
             return
         ok, _msg, headers = probe_mod.probe(self.scheme, secret)

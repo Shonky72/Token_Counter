@@ -79,7 +79,7 @@ class LoginWindow:
 
     def _build_provider_row(self, parent, pc: ProviderConfig) -> None:
         tk, ttk = self.tk, __import__("tkinter.ttk", fromlist=["ttk"])
-        provider = create_provider(pc, self.ledger)
+        provider = create_provider(pc, self.ledger, self.store)
 
         frame = ttk.LabelFrame(parent, text=f"{pc.name}  ({pc.type})", padding=8)
         frame.pack(fill="x", pady=6)
@@ -131,7 +131,7 @@ class LoginWindow:
         self.root.update_idletasks()
 
         def work():
-            provider = create_provider(pc, self.ledger)
+            provider = create_provider(pc, self.ledger, self.store)
             ok, msg = provider.validate_credential(secret)
             if ok:
                 self.store.set(pc.name, secret, "api_key")

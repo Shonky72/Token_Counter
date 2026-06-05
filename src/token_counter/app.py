@@ -27,19 +27,24 @@ DEFAULT_CONFIG = "~/.token_counter/config.yaml"
 def _load(path: str):
     config = load_config(path)
     ledger = Ledger(config.resolved_ledger_path)
-    # Make stored API keys available to providers/probes via their configured env vars.
-    load_credentials_into_env(CredentialStore(), config.providers)
-    return config, ledger
+    store = CredentialStore()
+    # Make stored API keys available to providers that use api_key_env, too.
+    load_credentials_into_env(store, config.providers)
+    return config, ledger, store
 
 
 def _cmd_run(args) -> int:
+    from . import startup as startup_mod
     from .server import UsageServer
     from .tray import TrayApp
 
-    config, ledger = _load(args.config)
+    config, ledger, store = _load(args.config)
+
+    # Honor the saved "open on startup" preference (Windows registry).
+    if startup_mod.is_supported() and config.open_on_startup and not startup_mod.is_enabled():
+        startup_mod.enable()
 
     # First-run nudge: if nothing is signed in, open the login window.
-    store = CredentialStore()
     if config.providers and not any(store.has_any(p.name) for p in config.providers):
         print("[token-counter] no credentials found — opening the login window.")
         import subprocess
@@ -52,14 +57,15 @@ def _cmd_run(args) -> int:
         server.start()
         print(f"[token-counter] usage/ratelimit server listening on {server.address}")
 
-    engine = Engine(config, ledger)
+    engine = Engine(config, ledger, store)
     app = TrayApp(
         engine,
         refresh_seconds=config.refresh_seconds,
         server=server,
         config_path=str(Path(args.config).expanduser()),
+        default_view=config.view_mode,
     )
-    print("[token-counter] tray started; hover the icon for live limits.")
+    print("[token-counter] tray started; click the icon for the dashboard.")
     app.run()
     return 0
 
@@ -71,15 +77,50 @@ def _cmd_login(args) -> int:
     return 0
 
 
+def _cmd_window(args) -> int:
+    from .window_ui import run_dashboard
+
+    run_dashboard(args.config)
+    return 0
+
+
+def _cmd_popup(args) -> int:
+    from .window_ui import run_compact
+
+    run_compact(args.config)
+    return 0
+
+
+def _cmd_startup(args) -> int:
+    from . import startup as startup_mod
+    from .config import save_open_on_startup
+
+    if not startup_mod.is_supported():
+        print("[token-counter] open-on-startup is only supported on Windows.")
+        return 1
+    if args.action == "status":
+        print("enabled" if startup_mod.is_enabled() else "disabled")
+        return 0
+    enable = args.action == "enable"
+    ok = startup_mod.set_enabled(enable)
+    try:
+        save_open_on_startup(args.config, enable)
+    except Exception:
+        pass
+    print(f"[token-counter] startup {'enabled' if enable else 'disabled'}"
+          + ("" if ok else " (registry update failed)"))
+    return 0 if ok else 1
+
+
 def _cmd_status(args) -> int:
-    config, ledger = _load(args.config)
-    engine = Engine(config, ledger)
+    config, ledger, store = _load(args.config)
+    engine = Engine(config, ledger, store)
     print(detail_text(engine.snapshot()))
     return 0
 
 
 def _cmd_record(args) -> int:
-    config, ledger = _load(args.config)
+    config, ledger, store = _load(args.config)
     ledger.record(
         provider=args.provider,
         model=args.model,
@@ -108,11 +149,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run", help="start the tray widget").set_defaults(func=_cmd_run)
+    sub.add_parser("window", help="open the dashboard window").set_defaults(func=_cmd_window)
+    sub.add_parser("popup", help="open the compact summary popup").set_defaults(func=_cmd_popup)
     sub.add_parser("login", help="open the provider sign-in window").set_defaults(func=_cmd_login)
     sub.add_parser("status", help="print current usage and exit").set_defaults(func=_cmd_status)
     sub.add_parser("providers", help="list registered provider types").set_defaults(
         func=_cmd_providers
     )
+
+    st = sub.add_parser("startup", help="manage launch-on-Windows-startup")
+    st.add_argument("action", choices=["enable", "disable", "status"])
+    st.set_defaults(func=_cmd_startup)
 
     rec = sub.add_parser("record", help="record a usage event into the ledger")
     rec.add_argument("--provider", required=True)

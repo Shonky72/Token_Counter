@@ -7,8 +7,8 @@ from token_counter.render import detail_text, human, overall_percent, tooltip_te
 def test_human():
     assert human(500) == "500"
     assert human(1500) == "1.5K"
-    assert human(1_000_000) == "1M"
-    assert human(1_500_000) == "1.50M"
+    assert human(1_000_000) == "1.0M"
+    assert human(1_500_000) == "1.5M"
 
 
 def test_tooltip_shows_used_limit_remaining_percent():

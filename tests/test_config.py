@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from token_counter.config import Budget, ConfigError, parse_config
+from token_counter.config import (
+    Budget,
+    ConfigError,
+    load_config,
+    parse_config,
+    save_open_on_startup,
+)
 
 
 def test_parse_minimal_config():
@@ -84,3 +90,23 @@ def test_window_start(period, expected):
 def test_total_period_window_is_epoch():
     start = Budget(period="total").window_start(datetime.now(timezone.utc))
     assert start.year == 1970
+
+
+def test_startup_and_view_mode_defaults_and_parsing():
+    cfg = parse_config({"providers": []})
+    assert cfg.open_on_startup is False
+    assert cfg.view_mode == "dashboard"
+    cfg2 = parse_config({"open_on_startup": True, "view_mode": "compact", "providers": []})
+    assert cfg2.open_on_startup is True
+    assert cfg2.view_mode == "compact"
+
+
+def test_save_open_on_startup_roundtrip(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("refresh_seconds: 30\nproviders: []\n", encoding="utf-8")
+    save_open_on_startup(path, True)
+    cfg = load_config(path)
+    assert cfg.open_on_startup is True
+    assert cfg.refresh_seconds == 30  # other keys preserved
+    save_open_on_startup(path, False)
+    assert load_config(path).open_on_startup is False

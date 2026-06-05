@@ -62,11 +62,13 @@ def _gauge_label(g: Gauge) -> str:
 
 
 class TrayApp:
-    def __init__(self, engine: Engine, refresh_seconds: int = 30, server=None, config_path: str | None = None):
+    def __init__(self, engine: Engine, refresh_seconds: int = 30, server=None,
+                 config_path: str | None = None, default_view: str = "dashboard"):
         self.engine = engine
         self.refresh_seconds = max(5, refresh_seconds)
         self.server = server
         self.config_path = config_path
+        self.default_view = default_view
         self._statuses: list[ProviderStatus] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -90,10 +92,22 @@ class TrayApp:
             items.append(MenuItem(header, Menu(*sub)))
 
         items.append(Menu.SEPARATOR)
+        # Default action (left-click the tray icon) opens the dashboard.
+        items.append(MenuItem("Open dashboard", self._on_dashboard, default=True))
+        items.append(MenuItem("Compact view", self._on_popup))
         items.append(MenuItem("Accounts / Login…", self._on_login))
+        items.append(MenuItem(
+            "Open on startup", self._on_toggle_startup, checked=lambda i: self._startup_enabled()
+        ))
         items.append(MenuItem("Refresh now", self._on_refresh))
         items.append(MenuItem("Quit", self._on_quit))
         return Menu(*items)
+
+    @staticmethod
+    def _startup_enabled() -> bool:
+        from . import startup as startup_mod
+
+        return startup_mod.is_enabled()
 
     def _apply(self) -> None:
         if self._icon is None:
@@ -119,16 +133,39 @@ class TrayApp:
             self._stop.wait(self.refresh_seconds)
 
     # --- menu callbacks ------------------------------------------------
-    def _on_login(self, icon=None, item=None) -> None:
-        # Launch the Tkinter login window in its own process so it owns the
-        # main thread (Tk and pystray can't share one).
-        args = [sys.executable, "-m", "token_counter", "login"]
+    def _spawn(self, command: str) -> None:
+        # Launch a Tkinter window in its own process so it owns the main thread
+        # (Tk and pystray can't share one).
+        args = [sys.executable, "-m", "token_counter", command]
         if self.config_path:
             args += ["-c", self.config_path]
         try:
             subprocess.Popen(args)
         except Exception as exc:  # pragma: no cover
-            print(f"[token-counter] could not open login window: {exc}")
+            print(f"[token-counter] could not open {command} window: {exc}")
+
+    def _on_dashboard(self, icon=None, item=None) -> None:
+        self._spawn("popup" if self.default_view == "compact" else "window")
+
+    def _on_popup(self, icon=None, item=None) -> None:
+        self._spawn("popup")
+
+    def _on_login(self, icon=None, item=None) -> None:
+        self._spawn("login")
+
+    def _on_toggle_startup(self, icon=None, item=None) -> None:
+        from . import startup as startup_mod
+        from .config import save_open_on_startup
+
+        new_value = not startup_mod.is_enabled()
+        startup_mod.set_enabled(new_value)
+        if self.config_path:
+            try:
+                save_open_on_startup(self.config_path, new_value)
+            except Exception:  # pragma: no cover
+                pass
+        if self._icon is not None:
+            self._icon.update_menu()
 
     def _on_refresh(self, icon=None, item=None) -> None:
         threading.Thread(target=self.refresh, daemon=True).start()

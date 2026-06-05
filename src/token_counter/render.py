@@ -17,8 +17,8 @@ def human(n: int) -> str:
     if n < 1_000_000:
         return f"{n / 1000:.1f}K".replace(".0K", "K")
     if n < 1_000_000_000:
-        return f"{n / 1_000_000:.2f}M".replace(".00M", "M")
-    return f"{n / 1_000_000_000:.2f}B"
+        return f"{n / 1_000_000:.1f}M"  # mockup style: 1.7M / 2.0M
+    return f"{n / 1_000_000_000:.1f}B"
 
 
 def overall_percent(statuses: list[ProviderStatus]) -> float | None:

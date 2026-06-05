@@ -36,7 +36,7 @@ def register(type_name: str) -> Callable[[Type["Provider"]], Type["Provider"]]:
     return decorator
 
 
-def create_provider(config: ProviderConfig, ledger: Ledger) -> "Provider":
+def create_provider(config: ProviderConfig, ledger: Ledger, store=None) -> "Provider":
     try:
         cls = _REGISTRY[config.type]
     except KeyError:
@@ -44,7 +44,7 @@ def create_provider(config: ProviderConfig, ledger: Ledger) -> "Provider":
         raise ValueError(
             f"unknown provider type {config.type!r} for {config.name!r}; known types: {known}"
         )
-    return cls(config, ledger)
+    return cls(config, ledger, store)
 
 
 def registered_types() -> list[str]:
@@ -60,13 +60,27 @@ class Provider(ABC):
     #: Override in subclasses (e.g. ``("api_key", "oauth")``).
     auth_methods: tuple[str, ...] = ("api_key",)
 
-    def __init__(self, config: ProviderConfig, ledger: Ledger):
+    def __init__(self, config: ProviderConfig, ledger: Ledger, store=None):
         self.config = config
         self.ledger = ledger
+        self.store = store  # optional CredentialStore for remembered keys
 
     @property
     def name(self) -> str:
         return self.config.name
+
+    def api_key(self) -> str | None:
+        """Resolve the API key: config/env first, then the remembered keyring.
+
+        This is what makes sign-in persist — once saved, the key is read from the
+        OS keyring on every restart with no retyping or env-var setup.
+        """
+        key = self.config.secret("api_key")
+        if key:
+            return key
+        if self.store is not None:
+            return self.store.get(self.name, "api_key")
+        return None
 
     @abstractmethod
     def poll(self, now: datetime | None = None) -> ProviderStatus:

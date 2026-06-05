@@ -4,6 +4,13 @@
 # How often the tray refreshes (seconds). 30 = "live within 30s".
 refresh_seconds: 30
 
+# Launch Token Counter automatically when Windows starts. Can also be toggled
+# from the tray menu / Settings; the app keeps this flag in sync.
+open_on_startup: false
+
+# Which window the tray icon opens on click: "dashboard" or "compact".
+view_mode: dashboard
+
 # Local usage ledger + captured rate-limit snapshots (SQLite).
 ledger_path: "~/.token_counter/ledger.db"
 
@@ -20,20 +27,26 @@ providers:
   - name: claude
     type: rate_limit
     scheme: anthropic          # anthropic | openai | google | auto
-    api_key_env: ANTHROPIC_API_KEY
+    display_name: Claude       # shown on the card
+    display: ring              # ring | bar
+    primary: requests          # which window the card highlights (reads as "messages")
+    # color: "#d97757"          # optional accent override
     # probe: true               # optionally hit /models each refresh too
 
-  # --- OpenAI: same live enforced limits ------------------------------------
+  # --- OpenAI / ChatGPT: same live enforced limits --------------------------
   - name: openai
     type: rate_limit
     scheme: openai
-    api_key_env: OPENAI_API_KEY
+    display_name: ChatGPT
+    display: ring
+    primary: tokens
 
   # --- Gemini: no live remaining-quota headers; track usage you report -------
   # (Google doesn't expose live per-request remaining limits.)
   - name: gemini
     type: gemini
-    api_key_env: GEMINI_API_KEY
+    display_name: Gemini
+    display: bar
     budget:                     # your own allowance, since Google enforces none here
       period: monthly
       limit: 2000000
