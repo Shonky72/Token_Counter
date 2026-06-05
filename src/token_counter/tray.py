@@ -52,7 +52,8 @@ class TrayApp:
         self._stop = threading.Event()
         self._icon = None
 
-    def _refresh_label(self) -> str:
+    def _refresh_label(self, item=None) -> str:
+        # pystray calls callable menu text as text(item), so accept the arg.
         when = self._last_refresh.strftime("%H:%M:%S") if self._last_refresh else "never"
         return f"Refresh now (last: {when})"
 

@@ -42,13 +42,10 @@ class Service:
         return cfg
 
 
-def _openai_compatible(key, name, key_url, base_url, model, note=""):
+def _openai_compatible(key, name, key_url, base_url, model, help):
     return Service(
         key=key, display_name=name, type="rate_limit", scheme="openai",
-        key_url=key_url, base_url=base_url, test_model=model,
-        help=(f"1. Open {key_url.split('//')[-1].split('/')[0]} and sign in.\n"
-              f"2. Create an API key.\n"
-              f"3. Copy it and paste it here." + (f"\n\n{note}" if note else "")),
+        key_url=key_url, base_url=base_url, test_model=model, help=help,
         options={"display": "ring", "primary": "tokens"},
     )
 
@@ -84,32 +81,61 @@ SERVICES: dict[str, Service] = {
         options={"display": "bar", "budget": {"period": "monthly", "limit": 2000000}},
     ),
     "grok": _openai_compatible(
-        "grok", "Grok", "https://console.x.ai", "https://api.x.ai/v1", "grok-2-latest"),
+        "grok", "Grok", "https://console.x.ai", "https://api.x.ai/v1", "grok-2-latest",
+        help=("1. Open console.x.ai and sign in with your X account.\n"
+              "2. Click “API Keys” → “Create API Key”.\n"
+              "3. Copy the key (starts with xai-) and paste it here.\n\n"
+              "Requires an xAI API account with credit — separate from X Premium.")),
     "deepseek": _openai_compatible(
         "deepseek", "DeepSeek", "https://platform.deepseek.com/api_keys",
-        "https://api.deepseek.com", "deepseek-chat"),
+        "https://api.deepseek.com", "deepseek-chat",
+        help=("1. Open platform.deepseek.com and sign in.\n"
+              "2. Go to “API keys” → “Create new API key”.\n"
+              "3. Copy the key (starts with sk-) and paste it here.")),
     "mistral": _openai_compatible(
         "mistral", "Mistral", "https://console.mistral.ai/api-keys",
-        "https://api.mistral.ai/v1", "mistral-small-latest"),
+        "https://api.mistral.ai/v1", "mistral-small-latest",
+        help=("1. Open console.mistral.ai and sign in.\n"
+              "2. Go to “API Keys” → “Create new key”.\n"
+              "3. Copy the key and paste it here.")),
     "groq": _openai_compatible(
         "groq", "Groq", "https://console.groq.com/keys",
-        "https://api.groq.com/openai/v1", "llama-3.1-8b-instant"),
+        "https://api.groq.com/openai/v1", "llama-3.1-8b-instant",
+        help=("1. Open console.groq.com and sign in.\n"
+              "2. Go to “API Keys” → “Create API Key”.\n"
+              "3. Copy the key (starts with gsk_) and paste it here.")),
     "perplexity": _openai_compatible(
         "perplexity", "Perplexity", "https://www.perplexity.ai/settings/api",
-        "https://api.perplexity.ai", "sonar"),
+        "https://api.perplexity.ai", "sonar",
+        help=("1. Open perplexity.ai → Settings → “API”.\n"
+              "2. Add a payment method, then “Generate” an API key.\n"
+              "3. Copy the key (starts with pplx-) and paste it here.")),
     "openrouter": _openai_compatible(
         "openrouter", "OpenRouter", "https://openrouter.ai/keys",
-        "https://openrouter.ai/api/v1", "openai/gpt-4o-mini"),
+        "https://openrouter.ai/api/v1", "openai/gpt-4o-mini",
+        help=("1. Open openrouter.ai/keys and sign in.\n"
+              "2. Click “Create Key”.\n"
+              "3. Copy the key (starts with sk-or-) and paste it here.\n\n"
+              "One key gives access to many models across providers.")),
     "together": _openai_compatible(
         "together", "Together AI", "https://api.together.xyz/settings/api-keys",
-        "https://api.together.xyz/v1", "meta-llama/Llama-3.1-8B-Instruct-Turbo"),
+        "https://api.together.xyz/v1", "meta-llama/Llama-3.1-8B-Instruct-Turbo",
+        help=("1. Open api.together.xyz and sign in.\n"
+              "2. Go to Settings → “API Keys”.\n"
+              "3. Copy your key and paste it here.")),
     "fireworks": _openai_compatible(
         "fireworks", "Fireworks AI", "https://fireworks.ai/account/api-keys",
-        "https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3p1-8b-instruct"),
+        "https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3p1-8b-instruct",
+        help=("1. Open fireworks.ai and sign in.\n"
+              "2. Go to Account → “API Keys” → “Create API Key”.\n"
+              "3. Copy the key and paste it here.")),
     "cohere": _openai_compatible(
         "cohere", "Cohere", "https://dashboard.cohere.com/api-keys",
         "https://api.cohere.ai/compatibility/v1", "command-r",
-        note="Cohere's rate-limit headers are partial; some gauges may show no data."),
+        help=("1. Open dashboard.cohere.com and sign in.\n"
+              "2. Go to “API Keys” → create a Trial or Production key.\n"
+              "3. Copy the key and paste it here.\n\n"
+              "Note: Cohere's rate-limit headers are partial; some gauges may show no data.")),
 }
 
 
