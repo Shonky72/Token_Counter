@@ -7,9 +7,21 @@ from token_counter.viewmodel import (
     build_card,
     build_cards,
     build_compact,
+    ease_out_frames,
     format_count,
     format_duration,
 )
+
+
+def test_ease_out_frames_ends_on_target():
+    frames = ease_out_frames(0, 1000, steps=18)
+    assert frames[-1] == 1000
+    assert len(frames) == 18
+    assert frames == sorted(frames)  # monotonic up
+
+
+def test_ease_out_frames_noop_when_equal():
+    assert ease_out_frames(500, 500) == [500]
 
 
 def test_format_duration():

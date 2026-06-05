@@ -175,26 +175,57 @@ def ensure_config(path: str | Path) -> Path:
     return path
 
 
-def save_open_on_startup(path: str | Path, value: bool) -> None:
-    """Persist just the ``open_on_startup`` flag back to a YAML/JSON config.
+def _read_raw(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    if path.suffix in {".yaml", ".yml"}:
+        return (yaml.safe_load(text) or {}) if yaml is not None else {}
+    return json.loads(text or "{}")
 
-    Keeps the rest of the file intact when toggled from the UI.
-    """
-    path = Path(path).expanduser()
-    raw: dict[str, Any] = {}
-    if path.exists():
-        text = path.read_text(encoding="utf-8")
-        if path.suffix in {".yaml", ".yml"} and yaml is not None:
-            raw = yaml.safe_load(text) or {}
-        elif path.suffix not in {".yaml", ".yml"}:
-            raw = json.loads(text or "{}")
-    raw["open_on_startup"] = bool(value)
+
+def _write_raw(path: Path, raw: dict[str, Any]) -> None:
     if path.suffix in {".yaml", ".yml"}:
         if yaml is None:
             raise ConfigError("PyYAML required to write YAML config")
         path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     else:
         path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+
+def save_open_on_startup(path: str | Path, value: bool) -> None:
+    """Persist just the ``open_on_startup`` flag, keeping the rest of the file."""
+    path = Path(path).expanduser()
+    raw = _read_raw(path)
+    raw["open_on_startup"] = bool(value)
+    _write_raw(path, raw)
+
+
+def add_provider(path: str | Path, service_key: str) -> None:
+    """Add a catalog service's provider block to the config (idempotent)."""
+    from .catalog import provider_config_for
+
+    path = Path(path).expanduser()
+    raw = _read_raw(path)
+    providers = raw.get("providers") or []
+    if not isinstance(providers, list):
+        raise ConfigError("'providers' must be a list")
+    if any(isinstance(p, dict) and p.get("name") == service_key for p in providers):
+        return  # already added
+    providers.append(provider_config_for(service_key))
+    raw["providers"] = providers
+    _write_raw(path, raw)
+
+
+def remove_provider(path: str | Path, name: str) -> None:
+    """Remove a provider block by name from the config."""
+    path = Path(path).expanduser()
+    raw = _read_raw(path)
+    providers = raw.get("providers") or []
+    raw["providers"] = [
+        p for p in providers if not (isinstance(p, dict) and p.get("name") == name)
+    ]
+    _write_raw(path, raw)
 
 
 def load_config(path: str | Path) -> AppConfig:

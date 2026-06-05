@@ -17,13 +17,14 @@ import threading
 from datetime import datetime, timezone
 
 from .engine import Engine
-from .icons import tray_meter_image
+from .icons import app_icon_image
 from .models import Gauge, ProviderStatus
 from .render import human, overall_percent, tray_title
 
 
-def _make_icon_image(percent: float | None):
-    return tray_meter_image(64, percent)
+def _make_icon_image(percent: float | None = None):
+    # The tray shows the brand icon (not a usage meter), per the user's request.
+    return app_icon_image(64)
 
 
 def _gauge_label(g: Gauge) -> str:

@@ -45,15 +45,21 @@ class RateLimitProvider(Provider):
         return str(self.config.option("scheme", "auto"))
 
     def validate_credential(self, secret: str) -> tuple[bool, str]:
-        ok, msg, headers = probe_mod.probe(self.scheme, secret)
-        if ok and headers:
-            # Seed the gauge from the probe response if it carried headers.
-            from ..ratelimit import parse_headers
+        from ..ratelimit import parse_headers
 
-            windows = parse_headers(headers, self.scheme)
-            if windows:
-                self.ledger.save_rate_limits(self.name, windows)
-        return ok, msg
+        # First confirm the key works (cheap list-models call).
+        ok, msg, headers = probe_mod.probe(self.scheme, secret)
+        if not ok:
+            return ok, msg
+
+        # Then fetch live rate-limit headers with one tiny generation call so the
+        # gauge is populated immediately (fixes "no rate-limit data yet").
+        f_ok, _f_msg, f_headers = probe_mod.fetch_rate_limits(self.scheme, secret)
+        windows = parse_headers(f_headers or headers, self.scheme)
+        if windows:
+            self.ledger.save_rate_limits(self.name, windows)
+            return True, "saved · live limits loaded"
+        return True, "saved (limits will appear after your first API call)"
 
     def _maybe_probe(self) -> None:
         if not self.config.option("probe", False):

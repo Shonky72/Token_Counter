@@ -20,7 +20,14 @@ from .engine import Engine
 from .icons import app_icon_image
 from .ledger import Ledger
 from .logos import provider_logo_image
-from .viewmodel import CardVM, CompactVM, build_cards, build_compact
+from .viewmodel import (
+    CardVM,
+    CompactVM,
+    build_cards,
+    build_compact,
+    ease_out_frames,
+    format_count,
+)
 
 # Dark theme palette (matches the mockup).
 BG = "#1b1b1d"
@@ -96,6 +103,8 @@ class Dashboard:
         self.config_path = config_path
         self.engine = _engine_for(config)
         self.statuses = []
+        self._cards: dict = {}
+        self._card_keys = None
 
         self.root = tk.Tk()
         self.root.title("tokn")
@@ -145,23 +154,52 @@ class Dashboard:
             self.statuses = self.engine.snapshot()
         except Exception as exc:  # pragma: no cover - keep window alive
             print(f"[token-counter] dashboard refresh failed: {exc}")
+        self._update_cards()
         self.root.after(max(5, self.config.refresh_seconds) * 1000, self.refresh_data)
 
     def _tick(self):
-        self._render()
+        # Cheap: only refresh the "Resets in…" countdowns once a second so the
+        # number animations aren't interrupted by a full rebuild.
+        self._update_resets()
         self.root.after(1000, self._tick)
 
-    def _render(self):
+    def _vms(self) -> list[CardVM]:
+        return build_cards(self.statuses, self.config.providers)
+
+    def _build_cards(self):
         for w in self.body.winfo_children():
             w.destroy()
-        cards = build_cards(self.statuses, self.config.providers)
-        if not cards:
-            self.tk.Label(self.body, text="No providers configured.",
-                          bg=BG, fg=SUBTEXT).pack(pady=20)
-        for vm in cards:
-            self._render_card(vm)
+        self._cards = {}
+        vms = self._vms()
+        self._card_keys = [vm.provider for vm in vms]
+        if not vms:
+            self.tk.Label(
+                self.body,
+                text="No services yet — click “Sign in / Accounts” below to add one.",
+                bg=BG, fg=SUBTEXT, wraplength=380, justify="left",
+            ).pack(pady=20)
+            return
+        for vm in vms:
+            self._create_card(vm)
 
-    def _render_card(self, vm: CardVM):
+    def _update_cards(self):
+        vms = self._vms()
+        if [vm.provider for vm in vms] != getattr(self, "_card_keys", None):
+            self._build_cards()
+            return
+        for vm in vms:
+            self._apply_card(vm, animate=True)
+
+    def _update_resets(self):
+        if not self._cards:
+            return
+        for vm in self._vms():
+            c = self._cards.get(vm.provider)
+            if c is not None:
+                c["reset_var"].set(vm.reset_text or "")
+
+    # --- one card ------------------------------------------------------
+    def _create_card(self, vm: CardVM):
         tk = self.tk
         card = tk.Frame(self.body, bg=CARD, highlightbackground=CARD_BORDER,
                         highlightthickness=1)
@@ -176,53 +214,103 @@ class Dashboard:
         tk.Label(head, text=vm.title.upper(), bg=CARD, fg=TEXT,
                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
 
+        num_var = tk.StringVar()
+        reset_var = tk.StringVar(value=vm.reset_text or "")
+        sub_var = tk.StringVar(value="\n".join(vm.sub_lines))
+        c = {"style": vm.style, "num_var": num_var, "reset_var": reset_var,
+             "sub_var": sub_var, "limit": vm.limit, "unit": vm.unit, "used": 0,
+             "accent": vm.accent, "anim": None}
+
         row = tk.Frame(inner, bg=CARD)
         row.pack(fill="x", pady=(8, 0))
 
-        if vm.error:
-            tk.Label(row, text=f"⚠ {vm.error}", bg=CARD, fg=SUBTEXT,
-                     wraplength=360, justify="left").pack(anchor="w")
-            return
-
         if vm.style == "bar":
-            text_col = tk.Frame(row, bg=CARD)
-            text_col.pack(fill="x")
-            big = tk.Frame(text_col, bg=CARD)
-            big.pack(fill="x")
-            tk.Label(big, text=f"{vm.percent}%" if vm.percent is not None else "—",
-                     bg=CARD, fg=TEXT, font=("Segoe UI", 13, "bold")).pack(side="left")
-            bar = tk.Canvas(text_col, height=8, bg=CARD, highlightthickness=0)
-            bar.pack(fill="x", pady=(8, 4))
-            bar.update_idletasks()
-            _draw_bar(bar, 0, 0, max(bar.winfo_width(), 360), 8, vm.percent or 0, vm.accent)
-            sub = tk.Frame(text_col, bg=CARD)
-            sub.pack(fill="x")
-            tk.Label(sub, text=vm.primary_text, bg=CARD, fg=SUBTEXT,
-                     font=("Segoe UI", 9)).pack(side="left")
-            if vm.reset_text:
-                tk.Label(sub, text=vm.reset_text, bg=CARD, fg=SUBTEXT,
-                         font=("Segoe UI", 9)).pack(side="right")
+            tk.Label(row, textvariable=num_var, bg=CARD, fg=TEXT,
+                     font=("Consolas", 13, "bold")).pack(anchor="w")
+            canvas = tk.Canvas(row, height=8, bg=CARD, highlightthickness=0)
+            canvas.pack(fill="x", pady=(6, 4))
+            c["canvas"] = canvas
+            subrow = tk.Frame(row, bg=CARD)
+            subrow.pack(fill="x")
+            tk.Label(subrow, textvariable=sub_var, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 8), justify="left").pack(side="left")
+            tk.Label(subrow, textvariable=reset_var, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 9)).pack(side="right")
         else:
-            ring = tk.Canvas(row, width=72, height=72, bg=CARD, highlightthickness=0)
-            ring.pack(side="left")
-            _draw_ring(ring, 4, 4, 64, vm.percent, vm.accent)
+            canvas = tk.Canvas(row, width=72, height=72, bg=CARD, highlightthickness=0)
+            canvas.pack(side="left")
+            c["canvas"] = canvas
             info = tk.Frame(row, bg=CARD)
             info.pack(side="left", fill="x", padx=12)
-            tk.Label(info, text=vm.primary_text, bg=CARD, fg=TEXT,
+            tk.Label(info, textvariable=num_var, bg=CARD, fg=TEXT,
                      font=("Consolas", 13, "bold")).pack(anchor="w")
-            for line in vm.sub_lines:
-                tk.Label(info, text=line, bg=CARD, fg=SUBTEXT,
-                         font=("Segoe UI", 8)).pack(anchor="w")
-            if vm.reset_text:
-                tk.Label(info, text=vm.reset_text, bg=CARD, fg=SUBTEXT,
-                         font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+            tk.Label(info, textvariable=sub_var, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 8), justify="left").pack(anchor="w")
+            tk.Label(info, textvariable=reset_var, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+
+        self._cards[vm.provider] = c
+        # Initial paint with a count-up from zero for flair.
+        self._draw_gauge(c, vm.percent, vm.accent)
+        self._apply_card(vm, animate=True)
+
+    def _draw_gauge(self, c, percent, accent):
+        canvas = c.get("canvas")
+        if canvas is None:
+            return
+        canvas.delete("all")
+        if c["style"] == "bar":
+            canvas.update_idletasks()
+            w = max(canvas.winfo_width(), 360)
+            _draw_bar(canvas, 0, 0, w, 8, percent or 0, accent)
+        else:
+            _draw_ring(canvas, 4, 4, 64, percent, accent)
+
+    def _apply_card(self, vm: CardVM, animate: bool):
+        c = self._cards.get(vm.provider)
+        if c is None:
+            return
+        c["limit"], c["unit"], c["accent"] = vm.limit, vm.unit, vm.accent
+        c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
+        c["reset_var"].set(vm.reset_text or "")
+        self._draw_gauge(c, vm.percent, vm.accent)
+        if vm.error:
+            c["num_var"].set("—")
+            c["used"] = 0
+            return
+        self._animate_number(c, c["used"], vm.used) if animate else c["num_var"].set(
+            format_count(vm.used, vm.limit, vm.unit)
+        )
+        c["used"] = vm.used
+
+    def _animate_number(self, c, start, target):
+        if c.get("anim") is not None:
+            try:
+                self.root.after_cancel(c["anim"])
+            except Exception:
+                pass
+            c["anim"] = None
+        frames = ease_out_frames(start, target, steps=18)
+
+        def step(i=0):
+            c["num_var"].set(format_count(frames[i], c["limit"], c["unit"]))
+            if i + 1 < len(frames):
+                c["anim"] = self.root.after(22, lambda: step(i + 1))
+            else:
+                c["anim"] = None
+
+        step(0)
 
     # --- actions -------------------------------------------------------
     def _open_login(self):
         import subprocess
-        import sys
 
-        subprocess.Popen([sys.executable, "-m", "token_counter", "login", "-c", self.config_path])
+        from .relaunch import subprocess_args
+
+        try:
+            subprocess.Popen(subprocess_args("login", self.config_path))
+        except Exception as exc:  # pragma: no cover
+            print(f"[token-counter] could not open login: {exc}")
 
     def _open_settings(self):
         SettingsDialog(self)
