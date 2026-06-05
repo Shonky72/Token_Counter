@@ -197,8 +197,21 @@ extension point) are the two worked templates.
 
 ## Package as a standalone Windows .exe (shareable)
 
+> **Your friends do NOT need Python.** The built `TokenCounter.exe` bundles
+> Python and everything else inside it — it's one self-contained file. Only
+> *building* needs Python, and even that can be done for you (see "Get it
+> without building" below).
+
 **Easiest:** double-click **`build.bat`**. It installs what's needed and produces
 `dist\TokenCounter.exe` — one file you can copy anywhere or send to friends.
+
+### Get it without building (GitHub Actions)
+
+So nobody needs Python at all: the repo includes a workflow
+(`.github/workflows/build-windows.yml`) that builds `TokenCounter.exe` **and**
+the `.msi` on a Windows runner every push. Open the **Actions** tab → the latest
+run → download the **TokenCounter-exe** artifact. Share that file. Tagging a
+release also attaches both to the release page.
 
 Equivalent manual command:
 
@@ -261,6 +274,18 @@ trademarked, the app ships clean **brand-style glyphs** drawn in code (OpenAI
 ring, Claude sunburst, Gemini sparkle). To use the real logos, drop a PNG at
 `~/.token_counter/logos/<provider>.png` (e.g. `claude.png`) and it's picked up
 automatically.
+
+## If something goes wrong
+
+If the app seems to run (it's in Task Manager) but no tray icon or window
+appears, check the log file it writes on every launch:
+
+```
+%USERPROFILE%\.token_counter\token_counter.log
+```
+
+Any startup error is recorded there (and shown in a popup). Send me that file's
+contents and I can pinpoint the cause.
 
 ## Tests
 

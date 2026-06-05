@@ -38,11 +38,15 @@ if errorlevel 1 (
 echo.
 echo Step 2/3: generating the app icon...
 python -m token_counter icon icon.ico
+if not exist "icon.ico" (
+  echo [WARNING] icon.ico was not created; the exe will use a default icon.
+)
 
 echo.
 echo Step 3/3: building the executable...
 python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
-  --icon icon.ico --collect-all pystray --collect-all PIL --collect-all keyring ^
+  --icon icon.ico --version-file version_info.txt ^
+  --collect-all pystray --collect-all PIL --collect-all keyring ^
   run_token_counter.py
 if errorlevel 1 (
   echo.

@@ -155,7 +155,13 @@ class TrayApp:
     def run(self) -> None:
         import pystray
 
-        self.refresh()
+        # A failed first refresh (network, bad key, etc.) must NOT stop the icon
+        # from appearing — otherwise the app looks like it's "running but
+        # invisible". Show the icon first, then refresh in the background.
+        try:
+            self.refresh()
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[token-counter] initial refresh failed: {exc}")
         with self._lock:
             statuses = list(self._statuses)
         self._icon = pystray.Icon(

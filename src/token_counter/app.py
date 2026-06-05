@@ -227,6 +227,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .bootstrap import init, report_fatal
+
+    init()  # make stdout/stderr safe + set the Windows AppUserModelID
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
@@ -250,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"[token-counter] config error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:  # never die silently in a windowed build
+        report_fatal(exc)
+        return 1
 
 
 if __name__ == "__main__":
