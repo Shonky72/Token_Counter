@@ -17,7 +17,9 @@ from . import startup as startup_mod
 from .auth import CredentialStore, load_credentials_into_env
 from .config import AppConfig, load_config, save_open_on_startup
 from .engine import Engine
+from .icons import app_icon_image
 from .ledger import Ledger
+from .logos import provider_logo_image
 from .viewmodel import CardVM, CompactVM, build_cards, build_compact
 
 # Dark theme palette (matches the mockup).
@@ -34,6 +36,26 @@ def _engine_for(config: AppConfig) -> Engine:
     load_credentials_into_env(store, config.providers)
     ledger = Ledger(config.resolved_ledger_path)
     return Engine(config, ledger, store)
+
+
+def _photo(pil_image, refs: list):
+    """Convert a PIL image to a Tk PhotoImage and keep a reference alive."""
+    from PIL import ImageTk
+
+    img = ImageTk.PhotoImage(pil_image)
+    refs.append(img)
+    return img
+
+
+def _logo_photo(name: str, scheme, size: int, refs: list):
+    return _photo(provider_logo_image(name, size, scheme), refs)
+
+
+def _set_window_icon(root, refs: list):
+    try:
+        root.iconphoto(True, _photo(app_icon_image(64), refs))
+    except Exception:  # pragma: no cover - platform/theme dependent
+        pass
 
 
 def _draw_ring(canvas, x, y, d, percent, accent):
@@ -80,6 +102,8 @@ class Dashboard:
         self.root.configure(bg=BG)
         self.root.geometry("440x560")
         self.root.minsize(380, 360)
+        self._photos: list = []  # keep refs so Tk doesn't garbage-collect images
+        _set_window_icon(self.root, self._photos)
 
         self._build_header()
         self.body = tk.Frame(self.root, bg=BG)
@@ -142,11 +166,10 @@ class Dashboard:
 
         head = tk.Frame(inner, bg=CARD)
         head.pack(fill="x")
-        tk.Canvas(head, width=12, height=12, bg=CARD, highlightthickness=0).pack(side="left")
-        dot = head.winfo_children()[-1]
-        dot.create_oval(2, 2, 11, 11, fill=vm.accent, outline=vm.accent)
+        logo = _logo_photo(vm.provider or vm.title, vm.scheme, 22, self._photos)
+        tk.Label(head, image=logo, bg=CARD).pack(side="left")
         tk.Label(head, text=vm.title.upper(), bg=CARD, fg=TEXT,
-                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=(6, 0))
+                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
 
         row = tk.Frame(inner, bg=CARD)
         row.pack(fill="x", pady=(8, 0))
@@ -269,6 +292,7 @@ class CompactPopup:
         self.root.overrideredirect(True)
         self.root.configure(bg=CARD_BORDER)
         self.root.attributes("-topmost", True)
+        self._photos: list = []
 
         self.frame = tk.Frame(self.root, bg=CARD, padx=10, pady=8)
         self.frame.pack(padx=1, pady=1)
@@ -292,9 +316,8 @@ class CompactPopup:
         for vm in rows:
             r = tk.Frame(self.frame, bg=CARD)
             r.pack(fill="x", pady=3)
-            dot = tk.Canvas(r, width=12, height=12, bg=CARD, highlightthickness=0)
-            dot.pack(side="left")
-            dot.create_oval(2, 2, 11, 11, fill=vm.accent, outline=vm.accent)
+            logo = _logo_photo(vm.provider or vm.title, vm.scheme, 18, self._photos)
+            tk.Label(r, image=logo, bg=CARD).pack(side="left")
             tk.Label(r, text=vm.title, bg=CARD, fg=TEXT,
                      font=("Segoe UI", 10, "bold")).pack(side="left", padx=6)
             tk.Label(r, text=vm.primary_text, bg=CARD, fg=SUBTEXT,

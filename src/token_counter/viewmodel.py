@@ -41,6 +41,8 @@ class CardVM:
     reset_text: str | None = None
     detail: str | None = None
     error: str | None = None
+    provider: str = ""          # raw provider name (for logo lookup)
+    scheme: str | None = None   # e.g. "anthropic" (helps pick the logo)
 
 
 @dataclass
@@ -49,6 +51,8 @@ class CompactVM:
     accent: str
     percent: int | None
     primary_text: str
+    provider: str = ""
+    scheme: str | None = None
 
 
 def format_duration(seconds: int | None) -> str | None:
@@ -115,17 +119,20 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
     preferred = cfg.option("primary") if cfg else None
     accent = accent_for(status.provider, color_override)
     title = (cfg.option("display_name") if cfg else None) or status.provider
+    scheme = cfg.option("scheme") if cfg else None
 
     if status.error:
         return CardVM(
             title=title, accent=accent, style=style, percent=None,
             primary_text="—", error=status.error, detail=status.detail,
+            provider=status.provider, scheme=scheme,
         )
 
     primary = _primary_gauge(status, preferred)
     if primary is None:
         return CardVM(title=title, accent=accent, style=style, percent=None,
-                      primary_text="no data", detail=status.detail)
+                      primary_text="no data", detail=status.detail,
+                      provider=status.provider, scheme=scheme)
 
     percent = round(primary.percent) if primary.percent is not None else None
     primary_text = format_count(primary.used, primary.limit, primary.unit)
@@ -145,6 +152,7 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
         title=title, accent=accent, style=style, percent=percent,
         primary_text=primary_text, sub_lines=sub_lines,
         reset_text=reset_text, detail=status.detail,
+        provider=status.provider, scheme=scheme,
     )
 
 
@@ -161,6 +169,7 @@ def build_compact(
     cards = build_cards(statuses, configs)
     return [
         CompactVM(title=c.title, accent=c.accent, percent=c.percent,
-                  primary_text=(c.error or c.primary_text))
+                  primary_text=(c.error or c.primary_text),
+                  provider=c.provider, scheme=c.scheme)
         for c in cards
     ]

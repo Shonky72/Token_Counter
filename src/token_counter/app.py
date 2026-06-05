@@ -145,6 +145,32 @@ def _cmd_providers(args) -> int:
     return 0
 
 
+def _cmd_icon(args) -> int:
+    from .icons import write_ico
+
+    path = write_ico(args.path)
+    print(f"[token-counter] wrote icon to {path}")
+    return 0
+
+
+def _cmd_shortcut(args) -> int:
+    from . import startup as startup_mod
+    from .relaunch import is_frozen
+    from .shortcut import create_desktop_shortcut, is_supported
+
+    if not is_supported():
+        print("[token-counter] desktop shortcuts are only supported on Windows.")
+        return 1
+    # Frozen exe -> point straight at it; from source -> python -m token_counter run.
+    if is_frozen():
+        target, arguments = sys.executable, "run"
+    else:
+        target, arguments = sys.executable, "-m token_counter run"
+    ok, info = create_desktop_shortcut(target=target, arguments=arguments)
+    print(f"[token-counter] {'created shortcut: ' + info if ok else 'failed: ' + info}")
+    return 0 if ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="token-counter", description=__doc__)
     parser.add_argument("-c", "--config", default=DEFAULT_CONFIG, help="path to config file")
@@ -158,10 +184,17 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("providers", help="list registered provider types").set_defaults(
         func=_cmd_providers
     )
+    sub.add_parser("shortcut", help="create a Desktop shortcut (Windows)").set_defaults(
+        func=_cmd_shortcut
+    )
 
     st = sub.add_parser("startup", help="manage launch-on-Windows-startup")
     st.add_argument("action", choices=["enable", "disable", "status"])
     st.set_defaults(func=_cmd_startup)
+
+    ic = sub.add_parser("icon", help="write the app icon as a .ico file")
+    ic.add_argument("path", nargs="?", default="icon.ico")
+    ic.set_defaults(func=_cmd_icon)
 
     rec = sub.add_parser("record", help="record a usage event into the ledger")
     rec.add_argument("--provider", required=True)
@@ -182,11 +215,13 @@ def main(argv: list[str] | None = None) -> int:
         args.command = "run"
         args.func = _cmd_run
 
+    # Commands that don't need a config file at all.
+    NO_CONFIG = {"providers", "icon", "shortcut", "startup"}
     if args.command == "providers":
         return _cmd_providers(args)
 
     # Make a fresh download "just work": create a default config on first run.
-    if args.command != "startup":
+    if args.command not in NO_CONFIG:
         created = not Path(args.config).expanduser().exists()
         ensure_config(args.config)
         if created:

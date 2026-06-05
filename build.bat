@@ -36,9 +36,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo Step 2/2: building the executable...
+echo Step 2/3: generating the app icon...
+python -m token_counter icon icon.ico
+
+echo.
+echo Step 3/3: building the executable...
 python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
-  --collect-all pystray --collect-all PIL --collect-all keyring ^
+  --icon icon.ico --collect-all pystray --collect-all PIL --collect-all keyring ^
   run_token_counter.py
 if errorlevel 1 (
   echo.
@@ -48,12 +52,17 @@ if errorlevel 1 (
 )
 
 echo.
+echo Creating a Desktop shortcut...
+"dist\TokenCounter.exe" shortcut
+
+echo.
 echo ============================================
 echo   Done!  Your file is here:
 echo   %CD%\dist\TokenCounter.exe
+echo   A "Token Counter" shortcut is on your Desktop.
 echo ============================================
 echo.
-echo Copy that single file anywhere and double-click to run it.
+echo Copy TokenCounter.exe anywhere and double-click to run it.
 echo Friends can run the same file and enter their own API keys.
 echo.
 pause
