@@ -160,6 +160,21 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
     )
 
 
+def ensure_config(path: str | Path) -> Path:
+    """Create a default config at ``path`` if none exists; return the path.
+
+    This is what lets a freshly-downloaded .exe "just work" — first run writes a
+    sensible default and the sign-in window does the rest.
+    """
+    path = Path(path).expanduser()
+    if not path.exists():
+        from .defaults import DEFAULT_CONFIG_YAML
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(DEFAULT_CONFIG_YAML, encoding="utf-8")
+    return path
+
+
 def save_open_on_startup(path: str | Path, value: bool) -> None:
     """Persist just the ``open_on_startup`` flag back to a YAML/JSON config.
 

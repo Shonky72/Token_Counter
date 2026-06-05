@@ -86,6 +86,8 @@ token-counter window          # the dashboard window (cards, rings/bars)
 token-counter popup           # the compact hover-style summary
 token-counter login           # the sign-in window
 token-counter startup enable  # launch on Windows startup (also: disable | status)
+token-counter shortcut        # create a Desktop shortcut (Windows)
+token-counter icon icon.ico   # write the app icon as a .ico
 token-counter status          # headless: print current limits/usage
 token-counter providers       # list registered provider plugin types
 ```
@@ -192,17 +194,41 @@ extension point) are the two worked templates.
 
 ---
 
-## Package as a standalone Windows .exe
+## Package as a standalone Windows .exe (shareable)
 
-```bash
-python -m pip install pyinstaller
-pyinstaller --noconsole --onefile --name TokenCounter ^
+**Easiest:** double-click **`build.bat`**. It installs what's needed and produces
+`dist\TokenCounter.exe` — one file you can copy anywhere or send to friends.
+
+Equivalent manual command:
+
+```bat
+python -m pip install -e . pyinstaller
+python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
     --collect-all pystray --collect-all PIL --collect-all keyring ^
-    src/token_counter/__main__.py
+    run_token_counter.py
 ```
 
-Drop `dist/TokenCounter.exe` into your Startup folder (`shell:startup`) so the
-widget launches with Windows.
+`build.bat` also embeds the app icon into the `.exe` and drops a **"Token
+Counter" shortcut on your Desktop**.
+
+**Sharing with friends:** send them just `TokenCounter.exe`. On first run it
+writes a default config to `~/.token_counter/config.yaml` and opens the sign-in
+window automatically — each person enters **their own** API keys, which are
+saved in **their own** Windows Credential Manager. Nothing of yours travels with
+the file. (Windows SmartScreen may warn about an unsigned app the first time —
+*More info → Run anyway*.)
+
+### Icon & provider logos
+
+The tray icon is a live **usage meter** — ascending bars that light up and shift
+green → amber → red as you approach your limit — generated in code (no image
+files to ship). The same motif is the window/`.exe` icon.
+
+Provider cards show a logo. Because the official ChatGPT/Claude/Gemini marks are
+trademarked, the app ships clean **brand-style glyphs** drawn in code (OpenAI
+ring, Claude sunburst, Gemini sparkle). To use the real logos, drop a PNG at
+`~/.token_counter/logos/<provider>.png` (e.g. `claude.png`) and it's picked up
+automatically.
 
 ## Tests
 
@@ -230,11 +256,14 @@ src/token_counter/
   auth.py          # keyring-backed credential store (remembered sign-in)
   oauth.py         # OAuth Authorization Code + PKCE (loopback)
   startup.py       # launch-on-Windows-startup (HKCU Run key)
+  shortcut.py      # create a Desktop shortcut (PowerShell)
+  icons.py         # ascending-bars app icon + live tray usage meter
+  logos.py         # provider logos (glyphs, or your PNGs if present)
   viewmodel.py     # dashboard/compact presentation model (pure, tested)
   login_ui.py      # Tkinter sign-in window (API key + OAuth)
-  window_ui.py     # Tkinter dashboard + compact popup (cards, rings/bars)
+  window_ui.py     # Tkinter dashboard + compact popup (cards, logos, gauges)
   tray.py          # pystray tray icon (Windows)
-  app.py           # CLI: run / window / popup / login / startup / status / …
+  app.py           # CLI: run / window / popup / login / startup / shortcut / …
   providers/
     base.py            # Provider ABC + registry
     rate_limit.py      # provider-enforced live limits (Anthropic/OpenAI)

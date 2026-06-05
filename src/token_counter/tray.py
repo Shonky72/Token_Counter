@@ -17,37 +17,13 @@ import threading
 from datetime import datetime, timezone
 
 from .engine import Engine
+from .icons import tray_meter_image
 from .models import Gauge, ProviderStatus
 from .render import human, overall_percent, tooltip_text
 
 
-def _color_for(percent: float | None) -> tuple[int, int, int]:
-    if percent is None:
-        return (90, 120, 200)  # blue: no limit data
-    if percent >= 90:
-        return (210, 60, 60)
-    if percent >= 75:
-        return (220, 160, 40)
-    return (60, 170, 90)
-
-
 def _make_icon_image(percent: float | None):
-    from PIL import Image, ImageDraw
-
-    size = 64
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    color = _color_for(percent)
-    draw.ellipse((4, 4, size - 4, size - 4), fill=color)
-    if percent is not None and percent > 0:
-        extent = 360 * min(percent, 100) / 100
-        draw.pieslice(
-            (4, 4, size - 4, size - 4),
-            start=-90,
-            end=-90 + extent,
-            fill=tuple(min(c + 60, 255) for c in color),
-        )
-    return img
+    return tray_meter_image(64, percent)
 
 
 def _gauge_label(g: Gauge) -> str:
