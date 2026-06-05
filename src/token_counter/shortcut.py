@@ -22,7 +22,7 @@ def _ps_quote(value: str) -> str:
 def create_desktop_shortcut(
     target: str | None = None,
     arguments: str = "",
-    name: str = "Token Counter",
+    name: str = "tokn",
     icon: str | None = None,
 ) -> tuple[bool, str]:
     """Create ``<Desktop>/<name>.lnk``. Returns (ok, path-or-message)."""
@@ -45,7 +45,7 @@ def create_desktop_shortcut(
     return _run_ps(script, "shortcut creation failed")
 
 
-def remove_desktop_shortcut(name: str = "Token Counter") -> tuple[bool, str]:
+def remove_desktop_shortcut(name: str = "tokn") -> tuple[bool, str]:
     """Delete ``<Desktop>/<name>.lnk`` if present. Returns (ok, message)."""
     if not is_supported():
         return False, "desktop shortcuts are only supported on Windows"

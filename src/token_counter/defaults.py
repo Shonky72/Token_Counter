@@ -9,8 +9,8 @@ the sign-in window opens, and they paste their own keys. Credentials live in
 from __future__ import annotations
 
 DEFAULT_CONFIG_YAML = """\
-# Token Counter configuration. Created automatically on first run.
-# Edit freely, then restart Token Counter to apply changes.
+# tokn configuration. Created automatically on first run.
+# Edit freely, then restart tokn to apply changes.
 
 refresh_seconds: 30          # how often the gauges refresh (seconds)
 open_on_startup: false       # also toggleable from the tray / Settings

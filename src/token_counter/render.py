@@ -65,6 +65,32 @@ def tooltip_text(statuses: list[ProviderStatus]) -> str:
     return "\n".join(lines)
 
 
+def tray_title(statuses: list[ProviderStatus], app_name: str = "tokn", limit: int = 120) -> str:
+    """Compact tray-icon title, hard-capped for the Windows 128-char szTip limit.
+
+    The full per-gauge detail lives in the menu and dashboard; the hover tooltip
+    just needs a short per-provider summary that can never exceed the limit (or
+    pystray's Shell_NotifyIcon raises and the icon never appears).
+    """
+    parts: list[str] = []
+    for s in statuses:
+        if s.error:
+            parts.append(f"{s.provider}: no data")
+            continue
+        g = _primary_gauge(s)
+        if g is None:
+            parts.append(f"{s.provider}: —")
+        elif g.percent is not None:
+            parts.append(f"{s.provider}: {g.percent:.0f}%")
+        else:
+            parts.append(f"{s.provider}: {human(g.used)}")
+    text = app_name + ("\n" + "\n".join(parts) if parts else "")
+    if len(text) > limit:
+        text = text[: limit - 1].rstrip() + "…"
+    return text
+
+
+
 def detail_text(statuses: list[ProviderStatus]) -> str:
     if not statuses:
         return "No providers configured."

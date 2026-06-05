@@ -53,10 +53,17 @@ class LoginWindow:
         self.store = store
         self.ledger = ledger
 
+        from .fonts import app_font_family
+
         self.root = tk.Tk()
-        self.root.title("Token Counter — Accounts")
+        self.root.title("tokn — Accounts")
         self.root.geometry("560x140")
         self.root.minsize(480, 120)
+
+        ttk.Label(
+            self.root, text="tokn", padding=(10, 8, 10, 0),
+            font=(app_font_family(), 16, "bold"),
+        ).pack(anchor="w")
 
         intro = ttk.Label(
             self.root,

@@ -1,7 +1,7 @@
 @echo off
 REM ===================================================================
 REM  Token Counter - build a Windows .msi installer
-REM  Double-click this. It produces dist\TokenCounter-<version>-win64.msi,
+REM  Double-click this. It produces dist\tokn-<version>-win64.msi,
 REM  which you (or a friend) can run to install the app like normal software.
 REM ===================================================================
 setlocal
@@ -31,6 +31,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+
+echo.
+echo Stamping version + git commit...
+python tools\stamp_build.py
 
 echo.
 echo Step 2/3: generating the app icon...

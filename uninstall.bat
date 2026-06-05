@@ -21,12 +21,12 @@ if /I not "%ok%"=="Y" (
 )
 
 echo.
-if exist "dist\TokenCounter.exe" (
-  "dist\TokenCounter.exe" uninstall
+if exist "dist\tokn.exe" (
+  "dist\tokn.exe" uninstall
 ) else (
   python -m token_counter uninstall
 )
 
 echo.
-echo Done. You can now delete the TokenCounter.exe file if you wish.
+echo Done. You can now delete the tokn.exe file if you wish.
 pause
