@@ -89,6 +89,7 @@ token-counter startup enable  # launch on Windows startup (also: disable | statu
 token-counter shortcut        # create a Desktop shortcut (Windows)
 token-counter icon icon.ico   # write the app icon as a .ico
 token-counter uninstall       # remove startup entry, shortcut, and saved keys
+token-counter --version       # print the build version + commit
 token-counter status          # headless: print current limits/usage
 token-counter providers       # list registered provider plugin types
 ```
@@ -208,10 +209,14 @@ extension point) are the two worked templates.
 ### Get it without building (GitHub Actions)
 
 So nobody needs Python at all: the repo includes a workflow
-(`.github/workflows/build-windows.yml`) that builds `TokenCounter.exe` **and**
-the `.msi` on a Windows runner every push. Open the **Actions** tab → the latest
-run → download the **TokenCounter-exe** artifact. Share that file. Tagging a
-release also attaches both to the release page.
+(`.github/workflows/build-windows.yml`) that builds `TokenCounter.exe` and the
+`.msi` on a Windows runner every push. The `.exe` and `.msi` build in
+**separate jobs** and upload with `if: always()`, so one failing never blocks
+the other — you always get a fresh `.exe`. Open the **Actions** tab → the latest
+**green** run → download the **TokenCounter-exe** artifact and share that file.
+
+For a stable link to hand friends, **create a GitHub Release** (tag it): the
+workflow attaches `TokenCounter.exe` and the `.msi` straight to the release page.
 
 Equivalent manual command:
 
@@ -275,6 +280,22 @@ ring, Claude sunburst, Gemini sparkle). To use the real logos, drop a PNG at
 `~/.token_counter/logos/<provider>.png` (e.g. `claude.png`) and it's picked up
 automatically.
 
+## Confirm which version you're running
+
+Every build is stamped with its version + git commit, shown in four places so a
+stale build can't masquerade as a new one:
+
+- **Right-click `TokenCounter.exe` → Properties → Details** → "Product name"
+  reads **Token Counter** and "File version" shows the number.
+- The **tray menu's top line**: `Token Counter v0.1.0 (<commit>, <date>)`.
+- The **dashboard header** (next to the title).
+- The **log file** (below) — its first line each launch is
+  `Token Counter 0.1.0 (<commit>, <date>) starting`.
+
+If that commit matches the latest commit on the branch, you're running the new
+build. If the icon still looks old but the commit is new, it's only Windows'
+icon cache — delete the old `.exe` and it refreshes.
+
 ## If something goes wrong
 
 If the app seems to run (it's in Task Manager) but no tray icon or window
@@ -284,8 +305,12 @@ appears, check the log file it writes on every launch:
 %USERPROFILE%\.token_counter\token_counter.log
 ```
 
-Any startup error is recorded there (and shown in a popup). Send me that file's
-contents and I can pinpoint the cause.
+Any startup error is recorded there (and shown in a popup), along with the
+version line above. Send me that file's contents and I can pinpoint the cause.
+
+For an even louder view, double-click **`build_debug.bat`** to build
+`TokenCounter-debug.exe`, which keeps a **console window** open so startup
+errors print directly.
 
 ## Tests
 

@@ -33,6 +33,10 @@ if errorlevel 1 (
 )
 
 echo.
+echo Stamping version + git commit...
+python tools\stamp_build.py
+
+echo.
 echo Step 2/3: generating the app icon...
 python -m token_counter icon icon.ico
 

@@ -24,7 +24,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Step 1/2: installing dependencies ^(this can take a minute^)...
+REM Close any running copy so it can't lock files or confuse the rebuild.
+taskkill /IM TokenCounter.exe /F >nul 2>nul
+
+echo Step 1/4: installing dependencies ^(this can take a minute^)...
 python -m pip install --upgrade pip
 python -m pip install -e .
 python -m pip install pyinstaller
@@ -36,15 +39,22 @@ if errorlevel 1 (
 )
 
 echo.
-echo Step 2/3: generating the app icon...
+echo Step 2/4: stamping version + git commit...
+python tools\stamp_build.py
+
+echo.
+echo Step 3/4: generating the app icon...
 python -m token_counter icon icon.ico
 if not exist "icon.ico" (
-  echo [WARNING] icon.ico was not created; the exe will use a default icon.
+  echo [ERROR] icon.ico was not created - the icon step failed. Aborting so you
+  echo don't get an exe with the wrong icon. See the messages above.
+  pause
+  exit /b 1
 )
 
 echo.
-echo Step 3/3: building the executable...
-python -m PyInstaller --noconsole --onefile --name TokenCounter --paths src ^
+echo Step 4/4: building the executable ^(clean build^)...
+python -m PyInstaller --clean --noconfirm --noconsole --onefile --name TokenCounter --paths src ^
   --icon icon.ico --version-file version_info.txt ^
   --collect-all pystray --collect-all PIL --collect-all keyring ^
   run_token_counter.py
@@ -65,6 +75,11 @@ echo   Done!  Your file is here:
 echo   %CD%\dist\TokenCounter.exe
 echo   A "Token Counter" shortcut is on your Desktop.
 echo ============================================
+echo.
+echo This build was stamped as:
+python -c "import sys; sys.path.insert(0,'src'); import token_counter; print('  Token Counter ' + token_counter.build_string())"
+echo (Confirm it in the tray menu's top line, or in
+echo  %USERPROFILE%\.token_counter\token_counter.log after launch.)
 echo.
 echo Copy TokenCounter.exe anywhere and double-click to run it.
 echo Friends can run the same file and enter their own API keys.

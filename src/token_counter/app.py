@@ -187,6 +187,9 @@ def _cmd_shortcut(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="token-counter", description=__doc__)
     parser.add_argument("-c", "--config", default=DEFAULT_CONFIG, help="path to config file")
+    parser.add_argument(
+        "--version", action="store_true", help="print the build version and exit"
+    )
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run", help="start the tray widget").set_defaults(func=_cmd_run)
@@ -233,6 +236,13 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if getattr(args, "version", False):
+        from ._buildinfo import build_string
+
+        print(f"Token Counter {build_string()}")
+        return 0
+
     if not getattr(args, "command", None):
         args.command = "run"
         args.func = _cmd_run

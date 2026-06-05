@@ -1,3 +1,6 @@
 """Token Counter — a live, per-model token usage meter for the system tray."""
 
-__version__ = "0.1.0"
+from ._buildinfo import VERSION as __version__
+from ._buildinfo import build_string
+
+__all__ = ["__version__", "build_string"]

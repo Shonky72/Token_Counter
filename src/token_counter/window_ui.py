@@ -116,10 +116,14 @@ class Dashboard:
     # --- chrome --------------------------------------------------------
     def _build_header(self):
         tk = self.tk
+        from ._buildinfo import build_string
+
         bar = tk.Frame(self.root, bg=BG)
         bar.pack(fill="x", padx=12, pady=(12, 6))
         tk.Label(bar, text="TOKEN TRACKER", bg=BG, fg=TEXT,
                  font=("Segoe UI", 11, "bold")).pack(side="left")
+        tk.Label(bar, text=f"v{build_string()}", bg=BG, fg=SUBTEXT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
         tk.Button(bar, text="⚙ Settings", command=self._open_settings,
                   bg=BG, fg=SUBTEXT, relief="flat", activebackground=CARD,
                   activeforeground=TEXT, cursor="hand2").pack(side="right")

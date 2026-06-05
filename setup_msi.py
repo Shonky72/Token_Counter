@@ -19,7 +19,10 @@ from pathlib import Path
 
 from cx_Freeze import Executable, setup
 
-VERSION = "0.1.0"
+try:
+    from token_counter import __version__ as VERSION
+except Exception:
+    VERSION = "0.1.0"
 
 # What to bundle. The dynamic ones (tkinter, keyring backends, the pystray
 # Windows backend) are listed explicitly so the freezer doesn't miss them.

@@ -68,6 +68,9 @@ class TrayApp:
             items.append(MenuItem(header, Menu(*sub)))
 
         items.append(Menu.SEPARATOR)
+        from ._buildinfo import build_string
+
+        items.append(MenuItem(f"Token Counter v{build_string()}", None, enabled=False))
         # Default action (left-click the tray icon) opens the dashboard.
         items.append(MenuItem("Open dashboard", self._on_dashboard, default=True))
         items.append(MenuItem("Compact view", self._on_popup))

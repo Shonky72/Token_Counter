@@ -55,9 +55,21 @@ def set_app_user_model_id(appid: str = APP_USER_MODEL_ID) -> None:
         pass
 
 
+def log_startup() -> None:
+    """Write the running build's identity to stdout (i.e. the log when frozen)."""
+    try:
+        from ._buildinfo import build_string
+
+        print(f"[token-counter] Token Counter {build_string()} starting "
+              f"(log: {log_file_path()})")
+    except Exception:  # pragma: no cover - never block startup
+        pass
+
+
 def init() -> None:
     ensure_streams()
     set_app_user_model_id()
+    log_startup()
 
 
 def report_fatal(exc: BaseException) -> None:
