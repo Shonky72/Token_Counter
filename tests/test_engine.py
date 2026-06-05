@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+import pytest
 
 from token_counter.config import parse_config
 from token_counter.engine import Engine
@@ -11,7 +11,7 @@ def _engine(tmp_path, raw):
     return Engine(config, ledger), ledger
 
 
-def test_used_and_remaining(tmp_path):
+def test_ledger_provider_used_and_remaining(tmp_path):
     engine, ledger = _engine(
         tmp_path,
         {
@@ -26,58 +26,60 @@ def test_used_and_remaining(tmp_path):
     )
     ledger.record("claude", "opus", input_tokens=600, output_tokens=100)
     [status] = engine.snapshot()
-    assert status.used == 700
-    assert status.limit == 1000
-    assert status.remaining == 300
-    assert round(status.percent) == 70
+    total_gauge = status.gauges[0]
+    assert total_gauge.used == 700
+    assert total_gauge.limit == 1000
+    assert total_gauge.remaining == 300
+    assert round(total_gauge.percent) == 70
 
 
-def test_remaining_clamps_at_zero(tmp_path):
+def test_rate_limit_provider_reads_enforced_limits(tmp_path):
     engine, ledger = _engine(
         tmp_path,
-        {"providers": [{"name": "c", "type": "local_ledger", "budget": {"period": "total", "limit": 100}}]},
+        {"providers": [{"name": "claude", "type": "rate_limit", "scheme": "anthropic"}]},
     )
-    ledger.record("c", "opus", input_tokens=250)
+    # Simulate captured headers (limit 40k, 12k remaining -> 28k used).
+    ledger.save_rate_limits(
+        "claude",
+        {"tokens": {"limit": 40000, "remaining": 12000, "reset_at": None, "unit": "tokens"}},
+    )
     [status] = engine.snapshot()
-    assert status.remaining == 0
-    assert status.percent == 100
+    assert status.error is None
+    g = status.gauges[0]
+    assert g.limit == 40000
+    assert g.used == 28000
+    assert g.remaining == 12000
 
 
-def test_per_model_budgets_surface_even_without_usage(tmp_path):
+def test_rate_limit_provider_without_data_errors_cleanly(tmp_path):
+    engine, _ = _engine(
+        tmp_path,
+        {"providers": [{"name": "claude", "type": "rate_limit", "scheme": "anthropic"}]},
+    )
+    [status] = engine.snapshot()
+    assert status.error is not None
+    assert "no rate-limit data" in status.error
+
+
+def test_unknown_provider_type_errors(tmp_path):
+    with pytest.raises(ValueError):
+        _engine(tmp_path, {"providers": [{"name": "c", "type": "does_not_exist"}]})
+
+
+def test_engine_isolates_provider_failures(tmp_path):
+    # A provider that raises should not break the whole snapshot.
     engine, _ = _engine(
         tmp_path,
         {
             "providers": [
-                {
-                    "name": "c",
-                    "type": "local_ledger",
-                    "budget": {"period": "total", "limit": 1000, "per_model": {"opus": 500}},
-                }
+                {"name": "ok", "type": "rate_limit", "scheme": "anthropic"},
             ]
         },
     )
+
+    def boom(now=None):
+        raise RuntimeError("kaboom")
+
+    engine.providers["ok"].poll = boom
     [status] = engine.snapshot()
-    opus = next(m for m in status.models if m.model == "opus")
-    assert opus.limit == 500
-    assert opus.used == 0
-    assert opus.remaining == 500
-
-
-def test_no_limit_means_no_percent(tmp_path):
-    engine, ledger = _engine(
-        tmp_path,
-        {"providers": [{"name": "c", "type": "local_ledger", "budget": {"period": "total"}}]},
-    )
-    ledger.record("c", "opus", input_tokens=42)
-    [status] = engine.snapshot()
-    assert status.limit is None
-    assert status.percent is None
-    assert status.remaining is None
-    assert status.used == 42
-
-
-def test_unknown_provider_type_errors(tmp_path):
-    import pytest
-
-    with pytest.raises(ValueError):
-        _engine(tmp_path, {"providers": [{"name": "c", "type": "does_not_exist"}]})
+    assert "kaboom" in status.error

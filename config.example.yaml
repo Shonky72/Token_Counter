@@ -4,40 +4,49 @@
 # How often the tray refreshes (seconds). 30 = "live within 30s".
 refresh_seconds: 30
 
-# Where the local usage ledger (SQLite) lives.
+# Local usage ledger + captured rate-limit snapshots (SQLite).
 ledger_path: "~/.token_counter/ledger.db"
 
-# Local HTTP endpoint your code POSTs usage to (see README "Reporting usage").
+# Local endpoint your code forwards usage + rate-limit headers to.
 server:
   enabled: true
   host: "127.0.0.1"
   port: 8787
 
 providers:
-  # --- Claude, tracked live from your own code (recommended) -------------
-  # You set the allowance; every call you report counts against it, per model.
+  # --- Claude: provider-ENFORCED rate limits, read live from response headers --
+  # No manual numbers. limit/remaining/reset come straight from Anthropic's
+  # headers, captured as your code makes real calls (see README "Reporting").
   - name: claude
-    type: local_ledger
-    budget:
-      period: monthly        # daily | weekly | monthly | total
-      limit: 1000000         # your 1,000,000-token allowance
-      per_model:             # optional sub-limits per model
-        claude-opus-4-8: 600000
-        claude-sonnet-4-6: 400000
+    type: rate_limit
+    scheme: anthropic          # anthropic | openai | google | auto
+    api_key_env: ANTHROPIC_API_KEY
+    # probe: true               # optionally hit /models each refresh too
 
-  # --- Gemini, same live-ledger approach --------------------------------
+  # --- OpenAI: same live enforced limits ------------------------------------
+  - name: openai
+    type: rate_limit
+    scheme: openai
+    api_key_env: OPENAI_API_KEY
+
+  # --- Gemini: no live remaining-quota headers; track usage you report -------
+  # (Google doesn't expose live per-request remaining limits.)
   - name: gemini
     type: gemini
-    budget:
+    api_key_env: GEMINI_API_KEY
+    budget:                     # your own allowance, since Google enforces none here
       period: monthly
       limit: 2000000
+    # OAuth sign-in (optional): create an OAuth client in Google Cloud console
+    # with redirect URI http://127.0.0.1:8799/callback, then:
+    # oauth:
+    #   preset: google
+    #   client_id: "xxxx.apps.googleusercontent.com"
+    #   client_secret: "GOCSPX-..."
+    #   redirect_port: 8799
 
-  # --- Optional: pull Claude usage from the Anthropic Usage API ----------
-  # Requires an Admin key (sk-ant-admin-...). Has minutes of lag, so prefer
-  # the live ledger above for "within 30s". Uncomment to enable.
-  # - name: claude-api
+  # --- Optional: Anthropic billing/usage view (Admin key, lags minutes) ------
+  # - name: claude-spend
   #   type: anthropic_admin
   #   admin_key_env: ANTHROPIC_ADMIN_KEY
-  #   budget:
-  #     period: monthly
-  #     limit: 1000000
+  #   budget: { period: monthly, limit: 1000000 }

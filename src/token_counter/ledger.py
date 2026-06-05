@@ -7,6 +7,7 @@ counter genuinely live: an event written now is visible to the next 30s refresh.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
@@ -27,6 +28,12 @@ CREATE TABLE IF NOT EXISTS usage_events (
     cache_creation_tokens INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_usage_lookup ON usage_events (provider, ts);
+
+CREATE TABLE IF NOT EXISTS rate_limit_snapshots (
+    provider     TEXT PRIMARY KEY,
+    captured_at  REAL NOT NULL,           -- UTC epoch seconds
+    windows_json TEXT NOT NULL            -- normalized windows (see ratelimit.py)
+);
 """
 
 
@@ -102,6 +109,35 @@ class Ledger:
             )
             for r in rows
         ]
+
+    # --- rate-limit snapshots (provider-enforced limits) ----------------
+    def save_rate_limits(
+        self, provider: str, windows: dict, captured_at: float | None = None
+    ) -> None:
+        """Store the latest rate-limit windows reported for a provider."""
+        if captured_at is None:
+            captured_at = time.time()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO rate_limit_snapshots (provider, captured_at, windows_json)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(provider) DO UPDATE SET
+                       captured_at = excluded.captured_at,
+                       windows_json = excluded.windows_json""",
+                (provider, captured_at, json.dumps(windows)),
+            )
+            self._conn.commit()
+
+    def get_rate_limits(self, provider: str) -> tuple[float, dict] | None:
+        """Return (captured_at, windows) for a provider, or None if never seen."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT captured_at, windows_json FROM rate_limit_snapshots WHERE provider = ?",
+                (provider,),
+            ).fetchone()
+        if row is None:
+            return None
+        return row["captured_at"], json.loads(row["windows_json"])
 
     def close(self) -> None:
         with self._lock:

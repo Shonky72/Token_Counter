@@ -1,44 +1,44 @@
 """Windows system-tray front end.
 
-Hover the icon → tooltip with used/remaining per provider. Right-click → full
-per-model breakdown, refresh, and quit. The icon color reflects the worst
-provider's consumption (green < 75% < amber < 90% < red).
+Hover the icon → tooltip with each provider's enforced limit (used / remaining /
+reset countdown). Right-click → full per-window breakdown, "Accounts / Login…",
+refresh, and quit. Icon color reflects the worst provider's consumption
+(green < 75% < amber < 90% < red).
 
 ``pystray`` and ``Pillow`` are imported lazily so the rest of the package (and
-the test suite) work on a headless box without them.
+the test suite) work headless.
 """
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import threading
-import time
 from datetime import datetime, timezone
 
 from .engine import Engine
-from .models import BudgetStatus
-from .render import detail_text, human, overall_percent, tooltip_text
+from .models import Gauge, ProviderStatus
+from .render import human, overall_percent, tooltip_text
 
 
 def _color_for(percent: float | None) -> tuple[int, int, int]:
     if percent is None:
-        return (90, 120, 200)  # blue: no limit configured
+        return (90, 120, 200)  # blue: no limit data
     if percent >= 90:
-        return (210, 60, 60)  # red
+        return (210, 60, 60)
     if percent >= 75:
-        return (220, 160, 40)  # amber
-    return (60, 170, 90)  # green
+        return (220, 160, 40)
+    return (60, 170, 90)
 
 
 def _make_icon_image(percent: float | None):
-    from PIL import Image, ImageDraw  # local import: optional dependency
+    from PIL import Image, ImageDraw
 
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     color = _color_for(percent)
     draw.ellipse((4, 4, size - 4, size - 4), fill=color)
-
-    # Draw a depletion arc: filled wedge showing how much budget is consumed.
     if percent is not None and percent > 0:
         extent = 360 * min(percent, 100) / 100
         draw.pieslice(
@@ -50,17 +50,28 @@ def _make_icon_image(percent: float | None):
     return img
 
 
+def _gauge_label(g: Gauge) -> str:
+    if g.limit is None:
+        text = f"{g.label}: {human(g.used)}"
+    else:
+        text = f"{g.label}: {human(g.used)}/{human(g.limit)} ({g.percent:.0f}%)"
+    reset = g.reset_in_seconds()
+    if reset is not None:
+        text += f" · {reset}s"
+    return text
+
+
 class TrayApp:
-    def __init__(self, engine: Engine, refresh_seconds: int = 30, server=None):
+    def __init__(self, engine: Engine, refresh_seconds: int = 30, server=None, config_path: str | None = None):
         self.engine = engine
         self.refresh_seconds = max(5, refresh_seconds)
         self.server = server
-        self._statuses: list[BudgetStatus] = []
+        self.config_path = config_path
+        self._statuses: list[ProviderStatus] = []
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._icon = None
 
-    # --- rendering -----------------------------------------------------
     def _build_menu(self):
         from pystray import Menu, MenuItem
 
@@ -70,24 +81,16 @@ class TrayApp:
         items: list = []
         for s in statuses:
             if s.error:
-                items.append(MenuItem(f"{s.provider}: error — {s.error}", None, enabled=False))
+                items.append(MenuItem(f"{s.provider}: {s.error}", None, enabled=False))
                 continue
-            header = (
-                f"{s.provider}: {human(s.used)}"
-                + (f" / {human(s.limit)} ({s.percent:.0f}%)" if s.limit else " (no limit)")
-            )
-            sub = [
-                MenuItem(
-                    f"{m.model}: {human(m.used)}"
-                    + (f" / {human(m.limit)} ({m.percent:.0f}%)" if m.limit else ""),
-                    None,
-                    enabled=False,
-                )
-                for m in s.models
-            ] or [MenuItem("no usage yet", None, enabled=False)]
+            header = s.provider + (f"  ({s.detail})" if s.detail else "")
+            sub = [MenuItem(_gauge_label(g), None, enabled=False) for g in s.gauges] or [
+                MenuItem("no data yet", None, enabled=False)
+            ]
             items.append(MenuItem(header, Menu(*sub)))
 
         items.append(Menu.SEPARATOR)
+        items.append(MenuItem("Accounts / Login…", self._on_login))
         items.append(MenuItem("Refresh now", self._on_refresh))
         items.append(MenuItem("Quit", self._on_quit))
         return Menu(*items)
@@ -101,7 +104,6 @@ class TrayApp:
         self._icon.icon = _make_icon_image(overall_percent(statuses))
         self._icon.menu = self._build_menu()
 
-    # --- refresh loop --------------------------------------------------
     def refresh(self) -> None:
         statuses = self.engine.snapshot(datetime.now(timezone.utc))
         with self._lock:
@@ -112,11 +114,22 @@ class TrayApp:
         while not self._stop.is_set():
             try:
                 self.refresh()
-            except Exception as exc:  # pragma: no cover - keep the tray alive
+            except Exception as exc:  # pragma: no cover - keep tray alive
                 print(f"[token-counter] refresh failed: {exc}")
             self._stop.wait(self.refresh_seconds)
 
     # --- menu callbacks ------------------------------------------------
+    def _on_login(self, icon=None, item=None) -> None:
+        # Launch the Tkinter login window in its own process so it owns the
+        # main thread (Tk and pystray can't share one).
+        args = [sys.executable, "-m", "token_counter", "login"]
+        if self.config_path:
+            args += ["-c", self.config_path]
+        try:
+            subprocess.Popen(args)
+        except Exception as exc:  # pragma: no cover
+            print(f"[token-counter] could not open login window: {exc}")
+
     def _on_refresh(self, icon=None, item=None) -> None:
         threading.Thread(target=self.refresh, daemon=True).start()
 
@@ -127,11 +140,10 @@ class TrayApp:
         if self._icon is not None:
             self._icon.stop()
 
-    # --- entry point ---------------------------------------------------
     def run(self) -> None:
         import pystray
 
-        self.refresh()  # populate before first paint
+        self.refresh()
         with self._lock:
             statuses = list(self._statuses)
         self._icon = pystray.Icon(

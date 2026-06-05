@@ -6,7 +6,12 @@ it up. Bound to 127.0.0.1 by default — it is a local sidecar, not a public API
     POST /usage
     {"provider": "claude", "model": "claude-opus-4-8",
      "input_tokens": 1200, "output_tokens": 340,
-     "cache_read_tokens": 0, "cache_creation_tokens": 0}
+     "cache_read_tokens": 0, "cache_creation_tokens": 0,
+     "headers": { ...raw response headers... }}   # optional; captures rate limits
+
+    POST /ratelimit
+    {"provider": "claude", "scheme": "anthropic",   # scheme optional (auto-detected)
+     "headers": { "anthropic-ratelimit-tokens-limit": "40000", ... }}
 
     GET /healthz  -> {"status": "ok"}
 
@@ -29,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .config import ServerConfig
 from .ledger import Ledger
+from .ratelimit import parse_headers
 
 _INT_FIELDS = (
     "input_tokens",
@@ -36,6 +42,14 @@ _INT_FIELDS = (
     "cache_read_tokens",
     "cache_creation_tokens",
 )
+
+
+def _capture_rate_limits(ledger: Ledger, provider: str, headers: dict, scheme: str) -> int:
+    """Parse rate-limit headers and persist them. Returns number of windows seen."""
+    windows = parse_headers(headers or {}, scheme or "auto")
+    if windows:
+        ledger.save_rate_limits(provider, windows)
+    return len(windows)
 
 
 def _make_handler(ledger: Ledger):
@@ -58,24 +72,33 @@ def _make_handler(ledger: Ledger):
             else:
                 self._json(404, {"error": "not found"})
 
-        def do_POST(self):
-            if self.path.rstrip("/") != "/usage":
-                self._json(404, {"error": "not found"})
-                return
+        def _body(self) -> dict | None:
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(length) if length else b"{}"
-                data = json.loads(raw.decode("utf-8"))
+                return json.loads(raw.decode("utf-8"))
             except (ValueError, json.JSONDecodeError) as exc:
                 self._json(400, {"error": f"invalid JSON: {exc}"})
-                return
+                return None
 
+        def do_POST(self):
+            route = self.path.rstrip("/")
+            if route == "/usage":
+                self._do_usage()
+            elif route == "/ratelimit":
+                self._do_ratelimit()
+            else:
+                self._json(404, {"error": "not found"})
+
+        def _do_usage(self):
+            data = self._body()
+            if data is None:
+                return
             provider = data.get("provider")
             model = data.get("model")
             if not provider or not model:
                 self._json(400, {"error": "'provider' and 'model' are required"})
                 return
-
             try:
                 counts = {f: int(data.get(f, 0) or 0) for f in _INT_FIELDS}
             except (TypeError, ValueError) as exc:
@@ -83,7 +106,27 @@ def _make_handler(ledger: Ledger):
                 return
 
             ledger.record(provider=str(provider), model=str(model), **counts)
-            self._json(202, {"status": "recorded"})
+            # Opportunistically capture rate-limit headers if the client forwarded them.
+            windows = _capture_rate_limits(
+                ledger, str(provider), data.get("headers") or {}, data.get("scheme", "auto")
+            )
+            self._json(202, {"status": "recorded", "rate_limit_windows": windows})
+
+        def _do_ratelimit(self):
+            data = self._body()
+            if data is None:
+                return
+            provider = data.get("provider")
+            if not provider:
+                self._json(400, {"error": "'provider' is required"})
+                return
+            windows = _capture_rate_limits(
+                ledger, str(provider), data.get("headers") or {}, data.get("scheme", "auto")
+            )
+            if not windows:
+                self._json(400, {"error": "no recognizable rate-limit headers found"})
+                return
+            self._json(202, {"status": "captured", "rate_limit_windows": windows})
 
     return Handler
 

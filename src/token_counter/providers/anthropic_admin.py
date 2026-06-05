@@ -27,7 +27,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from .base import Provider, register
-from ..models import ModelUsage, ProviderUsage
+from ..models import Gauge, ModelUsage, ProviderStatus
 
 _ENDPOINT = "https://api.anthropic.com/v1/organizations/usage_report/messages"
 _API_VERSION = "2023-06-01"
@@ -62,15 +62,17 @@ class AnthropicAdminProvider(Provider):
     def _admin_key(self) -> str | None:
         return self.config.secret("admin_key")
 
-    def get_usage(self, window_start: datetime) -> ProviderUsage:
+    def poll(self, now: datetime | None = None) -> ProviderStatus:
+        now = self._now(now)
+        window_start = self.config.budget.window_start(now)
         key = self._admin_key()
         if not key:
-            return ProviderUsage(
+            return ProviderStatus(
                 provider=self.name,
+                authenticated=False,
                 error="missing admin_key (set admin_key_env to an env var holding sk-ant-admin-...)",
             )
 
-        now = datetime.now(timezone.utc)
         params = {
             "starting_at": window_start.astimezone(timezone.utc).isoformat(),
             "bucket_width": self.config.option("bucket_width", _bucket_width(window_start, now)),
@@ -119,13 +121,27 @@ class AnthropicAdminProvider(Provider):
                     break
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:200] if exc.fp else ""
-            return ProviderUsage(
+            return ProviderStatus(
                 provider=self.name, error=f"HTTP {exc.code}: {detail or exc.reason}"
             )
         except (urllib.error.URLError, TimeoutError) as exc:
-            return ProviderUsage(provider=self.name, error=f"network error: {exc}")
+            return ProviderStatus(provider=self.name, error=f"network error: {exc}")
         except Exception as exc:  # pragma: no cover - defensive
-            return ProviderUsage(provider=self.name, error=str(exc))
+            return ProviderStatus(provider=self.name, error=str(exc))
 
         models = sorted(per_model.values(), key=lambda m: m.total, reverse=True)
-        return ProviderUsage(provider=self.name, models=models)
+        budget = self.config.budget
+        total = sum(m.total for m in models)
+        gauges = [Gauge(label=f"total ({budget.period})", used=total, limit=budget.limit)]
+        gauges += [
+            Gauge(label=m.model, used=m.total, limit=budget.per_model.get(m.model))
+            for m in models
+        ]
+        return ProviderStatus(provider=self.name, gauges=gauges, detail="Anthropic Usage API")
+
+    def validate_credential(self, secret: str) -> tuple[bool, str]:
+        if secret.startswith("sk-ant-admin"):
+            return True, "saved (admin key)"
+        if secret.strip():
+            return True, "saved (warning: not an sk-ant-admin- key)"
+        return False, "empty credential"

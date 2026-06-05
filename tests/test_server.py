@@ -50,6 +50,47 @@ def test_server_rejects_missing_fields(tmp_path):
         server.stop()
 
 
+def test_server_captures_rate_limit_headers(tmp_path):
+    ledger = Ledger(tmp_path / "l.db")
+    server = UsageServer(ServerConfig(host="127.0.0.1", port=0), ledger)
+    server.start()
+    try:
+        status, body = _post(
+            f"{server.address}/ratelimit",
+            {
+                "provider": "claude",
+                "headers": {
+                    "anthropic-ratelimit-tokens-limit": "40000",
+                    "anthropic-ratelimit-tokens-remaining": "12000",
+                },
+            },
+        )
+        assert status == 202
+        assert body["rate_limit_windows"] == 1
+
+        snap = ledger.get_rate_limits("claude")
+        assert snap is not None
+        _captured_at, windows = snap
+        assert windows["tokens"]["limit"] == 40000
+        assert windows["tokens"]["remaining"] == 12000
+    finally:
+        server.stop()
+
+
+def test_ratelimit_rejects_unrecognized_headers(tmp_path):
+    ledger = Ledger(tmp_path / "l.db")
+    server = UsageServer(ServerConfig(host="127.0.0.1", port=0), ledger)
+    server.start()
+    try:
+        try:
+            _post(f"{server.address}/ratelimit", {"provider": "x", "headers": {"server": "nginx"}})
+            assert False, "expected HTTP 400"
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+    finally:
+        server.stop()
+
+
 def test_healthz(tmp_path):
     ledger = Ledger(tmp_path / "l.db")
     server = UsageServer(ServerConfig(host="127.0.0.1", port=0), ledger)

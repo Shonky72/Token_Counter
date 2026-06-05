@@ -1,6 +1,7 @@
-"""Command-line entry points: run the tray, print status, or record usage.
+"""Command-line entry points.
 
-    token-counter run      [-c config.yaml]   # start the tray widget + server
+    token-counter run      [-c config.yaml]   # tray widget + usage/ratelimit server
+    token-counter login    [-c config.yaml]   # open the sign-in window
     token-counter status   [-c config.yaml]   # print current usage (headless)
     token-counter record   --provider claude --model claude-opus-4-8 \
                            --input 1200 --output 340
@@ -13,6 +14,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .auth import CredentialStore, load_credentials_into_env
 from .config import ConfigError, load_config
 from .engine import Engine
 from .ledger import Ledger
@@ -25,6 +27,8 @@ DEFAULT_CONFIG = "~/.token_counter/config.yaml"
 def _load(path: str):
     config = load_config(path)
     ledger = Ledger(config.resolved_ledger_path)
+    # Make stored API keys available to providers/probes via their configured env vars.
+    load_credentials_into_env(CredentialStore(), config.providers)
     return config, ledger
 
 
@@ -33,16 +37,37 @@ def _cmd_run(args) -> int:
     from .tray import TrayApp
 
     config, ledger = _load(args.config)
+
+    # First-run nudge: if nothing is signed in, open the login window.
+    store = CredentialStore()
+    if config.providers and not any(store.has_any(p.name) for p in config.providers):
+        print("[token-counter] no credentials found — opening the login window.")
+        import subprocess
+
+        subprocess.Popen([sys.executable, "-m", "token_counter", "login", "-c", args.config])
+
     server = None
     if config.server.enabled:
         server = UsageServer(config.server, ledger)
         server.start()
-        print(f"[token-counter] usage server listening on {server.address}")
+        print(f"[token-counter] usage/ratelimit server listening on {server.address}")
 
     engine = Engine(config, ledger)
-    app = TrayApp(engine, refresh_seconds=config.refresh_seconds, server=server)
-    print("[token-counter] tray started; hover the icon for usage.")
+    app = TrayApp(
+        engine,
+        refresh_seconds=config.refresh_seconds,
+        server=server,
+        config_path=str(Path(args.config).expanduser()),
+    )
+    print("[token-counter] tray started; hover the icon for live limits.")
     app.run()
+    return 0
+
+
+def _cmd_login(args) -> int:
+    from .login_ui import run_login
+
+    run_login(args.config)
     return 0
 
 
@@ -79,15 +104,12 @@ def _cmd_providers(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="token-counter", description=__doc__)
-    parser.add_argument(
-        "-c", "--config", default=DEFAULT_CONFIG, help="path to config file"
-    )
+    parser.add_argument("-c", "--config", default=DEFAULT_CONFIG, help="path to config file")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run", help="start the tray widget").set_defaults(func=_cmd_run)
-    sub.add_parser("status", help="print current usage and exit").set_defaults(
-        func=_cmd_status
-    )
+    sub.add_parser("login", help="open the provider sign-in window").set_defaults(func=_cmd_login)
+    sub.add_parser("status", help="print current usage and exit").set_defaults(func=_cmd_status)
     sub.add_parser("providers", help="list registered provider types").set_defaults(
         func=_cmd_providers
     )
@@ -111,7 +133,6 @@ def main(argv: list[str] | None = None) -> int:
         args.command = "run"
         args.func = _cmd_run
 
-    # 'providers' needs no config file.
     if args.command == "providers":
         return _cmd_providers(args)
 

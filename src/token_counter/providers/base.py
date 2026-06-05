@@ -1,9 +1,10 @@
 """Provider plugin interface.
 
-A provider knows how to report *current usage for the active budget window* for
-one account. Add a new provider in three steps:
+A provider reports the current "used / limit / remaining" picture for one
+account as a ``ProviderStatus`` (a list of gauges). Add a new provider in three
+steps:
 
-1. Subclass ``Provider`` and implement ``get_usage``.
+1. Subclass ``Provider`` and implement ``poll``.
 2. Decorate the class with ``@register("your_type_name")``.
 3. Import the module in ``providers/__init__.py`` so the decorator runs.
 
@@ -14,12 +15,12 @@ you register here.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Type
 
 from ..config import ProviderConfig
 from ..ledger import Ledger
-from ..models import ProviderUsage
+from ..models import ProviderStatus
 
 _REGISTRY: dict[str, Type["Provider"]] = {}
 
@@ -55,6 +56,10 @@ class Provider(ABC):
 
     type_name: str = "base"
 
+    #: Which credential kinds the login screen should offer for this provider.
+    #: Override in subclasses (e.g. ``("api_key", "oauth")``).
+    auth_methods: tuple[str, ...] = ("api_key",)
+
     def __init__(self, config: ProviderConfig, ledger: Ledger):
         self.config = config
         self.ledger = ledger
@@ -64,11 +69,26 @@ class Provider(ABC):
         return self.config.name
 
     @abstractmethod
-    def get_usage(self, window_start: datetime) -> ProviderUsage:
-        """Return token usage for this provider since ``window_start`` (UTC).
+    def poll(self, now: datetime | None = None) -> ProviderStatus:
+        """Return the current usage/limit picture.
 
         Implementations should never raise for expected failures (auth,
-        network) — catch them and return a ``ProviderUsage`` with ``error`` set
-        so the tray can show the problem instead of crashing the refresh loop.
+        network, no-data-yet) — catch them and return a ``ProviderStatus`` with
+        ``error`` set so the tray shows the problem instead of crashing the
+        refresh loop.
         """
         raise NotImplementedError
+
+    def validate_credential(self, secret: str) -> tuple[bool, str]:
+        """Probe the provider with ``secret`` to confirm it works.
+
+        Used by the login screen's "Validate & Save". Default: accept any
+        non-empty value. Override to make a real probe call.
+        """
+        if secret and secret.strip():
+            return True, "saved (not validated)"
+        return False, "empty credential"
+
+    @staticmethod
+    def _now(now: datetime | None) -> datetime:
+        return now or datetime.now(timezone.utc)

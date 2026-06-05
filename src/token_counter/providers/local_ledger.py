@@ -1,9 +1,8 @@
-"""The reliable, provider-agnostic source: the local usage ledger.
+"""Manual-budget provider: usage from the local ledger vs. a limit you set.
 
-Use this ``type`` for any provider whose usage you report yourself (via the
-HTTP server or ``token-counter record``). It is exact and live within one
-refresh interval, which is why it's the recommended default for "any provider
-I choose".
+Kept for cases where you want to track consumption against your own allowance
+(rather than the provider-enforced rate limits). Usage is summed from the
+ledger; the limit comes from ``budget`` in config.
 """
 
 from __future__ import annotations
@@ -11,14 +10,36 @@ from __future__ import annotations
 from datetime import datetime
 
 from .base import Provider, register
-from ..models import ProviderUsage
+from ..models import Gauge, ProviderStatus
+
+
+def ledger_status(provider: "Provider", now: datetime) -> ProviderStatus:
+    """Shared helper: build a ProviderStatus from ledger usage + config budget."""
+    budget = provider.config.budget
+    window_start = budget.window_start(now)
+    try:
+        models = provider.ledger.usage_since(provider.name, window_start)
+    except Exception as exc:  # pragma: no cover - defensive
+        return ProviderStatus(provider=provider.name, error=str(exc))
+
+    total = sum(m.total for m in models)
+    gauges = [
+        Gauge(
+            label=f"total ({budget.period})",
+            used=total,
+            limit=budget.limit,
+        )
+    ]
+    used_by_model = {m.model: m.total for m in models}
+    for model, used in sorted(used_by_model.items(), key=lambda kv: kv[1], reverse=True):
+        gauges.append(Gauge(label=model, used=used, limit=budget.per_model.get(model)))
+    for model, limit in budget.per_model.items():
+        if model not in used_by_model:
+            gauges.append(Gauge(label=model, used=0, limit=limit))
+    return ProviderStatus(provider=provider.name, gauges=gauges, detail=f"{budget.period} budget")
 
 
 @register("local_ledger")
 class LocalLedgerProvider(Provider):
-    def get_usage(self, window_start: datetime) -> ProviderUsage:
-        try:
-            models = self.ledger.usage_since(self.name, window_start)
-            return ProviderUsage(provider=self.name, models=models)
-        except Exception as exc:  # pragma: no cover - defensive
-            return ProviderUsage(provider=self.name, error=str(exc))
+    def poll(self, now: datetime | None = None) -> ProviderStatus:
+        return ledger_status(self, self._now(now))

@@ -1,32 +1,27 @@
-"""Drop-in helper: report token usage to a running Token Counter.
+"""Drop-in helper: forward usage AND rate-limit headers to Token Counter.
 
-Copy ``report()`` into your project and call it right after each LLM response.
-It is best-effort and non-blocking-ish: failures never break your app.
+Copy these functions into your project. Call ``report_call(...)`` right after
+each LLM response — it forwards the response's rate-limit headers (so the tray
+shows the provider's enforced limit/remaining/reset, live) and optionally the
+token counts (for the ledger-based providers).
 
-Anthropic example::
+All calls are best-effort: failures never break your app.
 
-    import anthropic
-    from report_usage import report
+Anthropic (the SDK exposes response headers via ``with_raw_response``)::
 
-    client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": "Hello"}],
-    )
-    report("claude", "claude-opus-4-8",
-           input_tokens=msg.usage.input_tokens,
-           output_tokens=msg.usage.output_tokens,
-           cache_read_tokens=getattr(msg.usage, "cache_read_input_tokens", 0) or 0,
-           cache_creation_tokens=getattr(msg.usage, "cache_creation_input_tokens", 0) or 0)
+    raw = client.messages.with_raw_response.create(
+        model="claude-opus-4-8", max_tokens=1024,
+        messages=[{"role": "user", "content": "Hi"}])
+    msg = raw.parse()
+    report_call("claude", dict(raw.headers), model="claude-opus-4-8",
+                input_tokens=msg.usage.input_tokens,
+                output_tokens=msg.usage.output_tokens)
 
-Gemini example::
+OpenAI::
 
-    resp = model.generate_content("Hello")
-    um = resp.usage_metadata
-    report("gemini", "gemini-1.5-pro",
-           input_tokens=um.prompt_token_count,
-           output_tokens=um.candidates_token_count)
+    raw = client.chat.completions.with_raw_response.create(
+        model="gpt-4o", messages=[{"role": "user", "content": "Hi"}])
+    report_ratelimit("openai", dict(raw.headers))
 """
 
 from __future__ import annotations
@@ -34,32 +29,14 @@ from __future__ import annotations
 import json
 import urllib.request
 
-ENDPOINT = "http://127.0.0.1:8787/usage"
+USAGE_URL = "http://127.0.0.1:8787/usage"
+RATELIMIT_URL = "http://127.0.0.1:8787/ratelimit"
 
 
-def report(
-    provider: str,
-    model: str,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
-    cache_read_tokens: int = 0,
-    cache_creation_tokens: int = 0,
-    endpoint: str = ENDPOINT,
-    timeout: float = 2.0,
-) -> bool:
-    """POST one usage record. Returns True on success, False on any failure."""
-    body = json.dumps(
-        {
-            "provider": provider,
-            "model": model,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "cache_read_tokens": cache_read_tokens,
-            "cache_creation_tokens": cache_creation_tokens,
-        }
-    ).encode("utf-8")
+def _post(url: str, payload: dict, timeout: float = 2.0) -> bool:
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        endpoint, data=body, headers={"Content-Type": "application/json"}
+        url, data=body, headers={"Content-Type": "application/json"}
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -68,6 +45,40 @@ def report(
         return False
 
 
+def report_ratelimit(provider: str, headers: dict, scheme: str = "auto") -> bool:
+    """Forward response headers so the tray reads the enforced limit live."""
+    return _post(RATELIMIT_URL, {"provider": provider, "scheme": scheme, "headers": headers})
+
+
+def report_call(
+    provider: str,
+    headers: dict | None = None,
+    model: str | None = None,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
+    scheme: str = "auto",
+) -> bool:
+    """Forward both rate-limit headers and token counts in one call."""
+    payload = {
+        "provider": provider,
+        "model": model or "unknown",
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
+        "scheme": scheme,
+        "headers": headers or {},
+    }
+    return _post(USAGE_URL, payload)
+
+
 if __name__ == "__main__":
-    ok = report("claude", "claude-opus-4-8", input_tokens=1200, output_tokens=340)
-    print("reported" if ok else "failed (is `token-counter run` active?)")
+    demo = {
+        "anthropic-ratelimit-tokens-limit": "40000",
+        "anthropic-ratelimit-tokens-remaining": "12000",
+        "anthropic-ratelimit-tokens-reset": "2026-06-05T00:00:30Z",
+    }
+    ok = report_ratelimit("claude", demo)
+    print("forwarded" if ok else "failed (is `token-counter run` active?)")

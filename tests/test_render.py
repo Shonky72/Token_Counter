@@ -1,4 +1,6 @@
-from token_counter.models import BudgetStatus, ModelBudgetStatus
+from datetime import datetime, timedelta, timezone
+
+from token_counter.models import Gauge, ProviderStatus
 from token_counter.render import detail_text, human, overall_percent, tooltip_text
 
 
@@ -9,37 +11,59 @@ def test_human():
     assert human(1_500_000) == "1.50M"
 
 
-def test_tooltip_includes_used_and_remaining():
-    s = BudgetStatus(
-        provider="claude", period="monthly", limit=1_000_000, used=620_000,
-        models=[ModelBudgetStatus("opus", 620_000, 600_000)],
+def test_tooltip_shows_used_limit_remaining_percent():
+    s = ProviderStatus(
+        provider="claude",
+        gauges=[Gauge(label="tokens/min", used=28000, limit=40000)],
     )
     text = tooltip_text([s])
     assert "claude" in text
-    assert "1M" in text  # limit
-    assert "62%" in text
+    assert "40K" in text
+    assert "70%" in text
+
+
+def test_tooltip_includes_reset_countdown():
+    reset = datetime.now(timezone.utc) + timedelta(seconds=45)
+    s = ProviderStatus(
+        provider="claude",
+        gauges=[Gauge(label="tokens/min", used=10, limit=100, reset_at=reset)],
+    )
+    assert "resets in" in tooltip_text([s])
 
 
 def test_tooltip_handles_error():
-    s = BudgetStatus(provider="x", period="monthly", limit=None, used=0, error="bad key")
-    assert "bad key" in tooltip_text([s])
+    s = ProviderStatus(provider="x", error="no rate-limit data yet")
+    assert "no rate-limit data yet" in tooltip_text([s])
 
 
-def test_overall_percent_is_worst_case():
-    a = BudgetStatus("a", "monthly", 100, 10)   # 10%
-    b = BudgetStatus("b", "monthly", 100, 90)   # 90%
+def test_primary_gauge_picks_highest_percent():
+    s = ProviderStatus(
+        provider="p",
+        gauges=[
+            Gauge(label="requests/min", used=1, limit=100),  # 1%
+            Gauge(label="tokens/min", used=95, limit=100),   # 95%
+        ],
+    )
+    assert "tokens/min" in tooltip_text([s])
+
+
+def test_overall_percent_worst_case():
+    a = ProviderStatus("a", gauges=[Gauge("t", 10, 100)])
+    b = ProviderStatus("b", gauges=[Gauge("t", 90, 100)])
     assert overall_percent([a, b]) == 90
 
 
-def test_overall_percent_none_when_no_limits():
-    s = BudgetStatus("a", "monthly", None, 50)
+def test_overall_percent_none_without_limits():
+    s = ProviderStatus("a", gauges=[Gauge("t", 50, None)])
     assert overall_percent([s]) is None
 
 
-def test_detail_text_lists_models():
-    s = BudgetStatus(
-        provider="claude", period="monthly", limit=1000, used=300,
-        models=[ModelBudgetStatus("opus", 200, 500), ModelBudgetStatus("sonnet", 100, None)],
+def test_detail_text_lists_gauges_and_detail():
+    s = ProviderStatus(
+        provider="claude",
+        gauges=[Gauge("tokens/min", 100, 1000), Gauge("requests/min", 2, 50)],
+        detail="updated 5s ago",
     )
     text = detail_text([s])
-    assert "opus" in text and "sonnet" in text
+    assert "tokens/min" in text and "requests/min" in text
+    assert "updated 5s ago" in text

@@ -1,19 +1,17 @@
-"""Human-readable rendering of budget statuses.
+"""Human-readable rendering of provider statuses.
 
-Two surfaces:
-  * ``tooltip_text`` — compact, for the Windows tray hover (kept short; the
-    native tooltip is length-limited). One line per provider.
-  * ``detail_text`` — full per-model breakdown, for the CLI ``status`` command
-    and the tray's details popup.
+  * ``tooltip_text`` — compact, for the Windows tray hover (one block per
+    provider; the native tooltip is length-limited so keep it tight).
+  * ``detail_text`` — full per-gauge breakdown for the CLI ``status`` command
+    and the tray's expandable menu.
 """
 
 from __future__ import annotations
 
-from .models import BudgetStatus
+from .models import Gauge, ProviderStatus
 
 
 def human(n: int) -> str:
-    """Compact token count: 1234 -> 1.2K, 1_500_000 -> 1.5M."""
     if n < 1000:
         return str(n)
     if n < 1_000_000:
@@ -23,42 +21,62 @@ def human(n: int) -> str:
     return f"{n / 1_000_000_000:.2f}B"
 
 
-def overall_percent(statuses: list[BudgetStatus]) -> float | None:
-    """Worst-case percent across providers that have a limit (drives icon color)."""
-    pcts = [s.percent for s in statuses if s.percent is not None]
+def overall_percent(statuses: list[ProviderStatus]) -> float | None:
+    """Worst-case percent across all providers (drives the icon color)."""
+    pcts = [s.worst_percent for s in statuses if s.worst_percent is not None]
     return max(pcts) if pcts else None
 
 
-def _provider_line(s: BudgetStatus) -> str:
-    if s.error:
-        return f"{s.provider}: ⚠ {s.error}"
-    if s.limit is None:
-        return f"{s.provider} ({s.period}): {human(s.used)} used (no limit set)"
-    return (
-        f"{s.provider} ({s.period}): {human(s.used)}/{human(s.limit)} "
-        f"· {human(s.remaining or 0)} left ({s.percent:.0f}%)"
-    )
+def _gauge_line(g: Gauge) -> str:
+    if g.limit is None:
+        base = f"{g.label}: {human(g.used)} used (no limit)"
+    else:
+        base = (
+            f"{g.label}: {human(g.used)}/{human(g.limit)} "
+            f"· {human(g.remaining or 0)} left ({g.percent:.0f}%)"
+        )
+    reset = g.reset_in_seconds()
+    if reset is not None:
+        base += f" · resets in {reset}s"
+    return base
 
 
-def tooltip_text(statuses: list[BudgetStatus]) -> str:
+def _primary_gauge(s: ProviderStatus) -> Gauge | None:
+    """The gauge that best summarizes a provider (highest percent, else first)."""
+    with_pct = [g for g in s.gauges if g.percent is not None]
+    if with_pct:
+        return max(with_pct, key=lambda g: g.percent)
+    return s.gauges[0] if s.gauges else None
+
+
+def tooltip_text(statuses: list[ProviderStatus]) -> str:
     if not statuses:
-        return "Token Counter — no providers configured"
-    return "\n".join(_provider_line(s) for s in statuses)
+        return "No providers configured"
+    lines: list[str] = []
+    for s in statuses:
+        if s.error:
+            lines.append(f"{s.provider}: ⚠ {s.error}")
+            continue
+        g = _primary_gauge(s)
+        if g is None:
+            lines.append(f"{s.provider}: no data")
+        else:
+            lines.append(f"{s.provider} · {_gauge_line(g)}")
+    return "\n".join(lines)
 
 
-def detail_text(statuses: list[BudgetStatus]) -> str:
+def detail_text(statuses: list[ProviderStatus]) -> str:
     if not statuses:
         return "No providers configured."
     blocks: list[str] = []
     for s in statuses:
-        lines = [_provider_line(s)]
-        for m in s.models:
-            if m.limit is not None:
-                lines.append(
-                    f"    {m.model}: {human(m.used)}/{human(m.limit)} "
-                    f"({m.percent:.0f}%)"
-                )
-            else:
-                lines.append(f"    {m.model}: {human(m.used)}")
+        header = s.provider
+        if s.detail:
+            header += f"  ({s.detail})"
+        lines = [header]
+        if s.error:
+            lines.append(f"    ⚠ {s.error}")
+        for g in s.gauges:
+            lines.append(f"    {_gauge_line(g)}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)

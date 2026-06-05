@@ -1,17 +1,22 @@
 """Core data structures shared across the app.
 
-These are deliberately plain dataclasses with no I/O so they are trivial to
-construct in tests and to pass between the ledger, providers, engine and tray.
+Plain dataclasses with no I/O — trivial to construct in tests and to pass
+between the ledger, providers, engine, render and tray layers.
+
+The central render type is ``Gauge``: one bar of "used / limit (remaining)".
+Both provider-enforced rate-limit windows and manual ledger budgets reduce to a
+list of gauges, so every surface renders them the same way.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 
 @dataclass(frozen=True)
 class ModelUsage:
-    """Token usage for a single model within some time window."""
+    """Token usage for a single model within some time window (ledger mode)."""
 
     model: str
     input_tokens: int = 0
@@ -21,7 +26,6 @@ class ModelUsage:
 
     @property
     def total(self) -> int:
-        """Every token that counts against an allowance."""
         return (
             self.input_tokens
             + self.output_tokens
@@ -42,51 +46,19 @@ class ModelUsage:
 
 
 @dataclass
-class ProviderUsage:
-    """What a provider reports for the current budget window.
+class Gauge:
+    """One "used / limit (remaining)" bar.
 
-    ``error`` is set when the provider could not be polled (bad key, network,
-    etc.). The tray surfaces this rather than silently showing stale zeros.
+    ``unit`` is ``tokens`` or ``requests``. ``reset_at`` is when the window
+    refills (rate-limit windows) — used to show a countdown and to roll the
+    bar back to full once it has passed.
     """
 
-    provider: str
-    models: list[ModelUsage] = field(default_factory=list)
-    error: str | None = None
-
-    @property
-    def total(self) -> int:
-        return sum(m.total for m in self.models)
-
-
-@dataclass
-class ModelBudgetStatus:
-    model: str
+    label: str
     used: int
-    limit: int | None  # None => no per-model cap configured
-
-    @property
-    def remaining(self) -> int | None:
-        if self.limit is None:
-            return None
-        return max(self.limit - self.used, 0)
-
-    @property
-    def percent(self) -> float | None:
-        if not self.limit:
-            return None
-        return min(self.used / self.limit * 100.0, 100.0)
-
-
-@dataclass
-class BudgetStatus:
-    """The computed used/remaining picture for one provider, ready to render."""
-
-    provider: str
-    period: str
     limit: int | None
-    used: int
-    models: list[ModelBudgetStatus] = field(default_factory=list)
-    error: str | None = None
+    unit: str = "tokens"
+    reset_at: datetime | None = None
 
     @property
     def remaining(self) -> int | None:
@@ -96,7 +68,29 @@ class BudgetStatus:
 
     @property
     def percent(self) -> float | None:
-        """Percent of the allowance consumed, 0-100, or None if no limit set."""
         if not self.limit:
             return None
         return min(self.used / self.limit * 100.0, 100.0)
+
+    def reset_in_seconds(self, now: datetime | None = None) -> int | None:
+        if self.reset_at is None:
+            return None
+        now = now or datetime.now(timezone.utc)
+        delta = (self.reset_at - now).total_seconds()
+        return max(int(delta), 0)
+
+
+@dataclass
+class ProviderStatus:
+    """Everything needed to render one provider in the tray."""
+
+    provider: str
+    gauges: list[Gauge] = field(default_factory=list)
+    detail: str | None = None  # e.g. "tier: build" or "updated 12s ago"
+    error: str | None = None
+    authenticated: bool = True
+
+    @property
+    def worst_percent(self) -> float | None:
+        pcts = [g.percent for g in self.gauges if g.percent is not None]
+        return max(pcts) if pcts else None
