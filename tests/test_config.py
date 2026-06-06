@@ -119,7 +119,6 @@ def test_add_and_remove_provider_roundtrip(tmp_path):
     ensure_config(path)
     add_provider(path, "claude")
     add_provider(path, "openai")
-    add_provider(path, "claude")  # idempotent
     names = [p.name for p in load_config(path).providers]
     assert names == ["claude", "openai"]
     # The catalog template carries display options through.
@@ -129,6 +128,49 @@ def test_add_and_remove_provider_roundtrip(tmp_path):
 
     remove_provider(path, "claude")
     assert [p.name for p in load_config(path).providers] == ["openai"]
+
+
+def test_add_provider_multiple_keys_per_service(tmp_path):
+    from token_counter.config import add_provider, remove_provider
+
+    path = tmp_path / "config.yaml"
+    ensure_config(path)
+    n1 = add_provider(path, "claude", label="Work")
+    n2 = add_provider(path, "claude", label="Home")
+    assert (n1, n2) == ("claude", "claude-2")
+
+    providers = load_config(path).providers
+    by_name = {p.name: p for p in providers}
+    # Both record the catalog service id and carry distinct labels.
+    assert by_name["claude"].option("service") == "claude"
+    assert by_name["claude-2"].option("service") == "claude"
+    assert by_name["claude"].option("display_name") == "Claude — Work"
+    assert by_name["claude-2"].option("display_name") == "Claude — Home"
+
+    # Removing one instance leaves the other intact.
+    remove_provider(path, "claude")
+    assert [p.name for p in load_config(path).providers] == ["claude-2"]
+
+
+def test_group_by_service_keeps_instances_adjacent():
+    from token_counter.config import group_by_service
+
+    class P:
+        def __init__(self, name, service):
+            self._name, self._service = name, service
+
+        @property
+        def name(self):
+            return self._name
+
+        def option(self, key, default=None):
+            return {"service": self._service}.get(key, default)
+
+    claude = P("claude", "claude")
+    gemini = P("gemini", "gemini")
+    claude2 = P("claude-2", "claude")
+    ordered = group_by_service([claude, gemini, claude2])
+    assert [p.name for p in ordered] == ["claude", "claude-2", "gemini"]
 
 
 def test_ensure_config_does_not_overwrite(tmp_path):

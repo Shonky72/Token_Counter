@@ -44,17 +44,26 @@ class RateLimitProvider(Provider):
     def scheme(self) -> str:
         return str(self.config.option("scheme", "auto"))
 
+    @property
+    def base_url(self) -> str | None:
+        return self.config.option("base_url")
+
+    @property
+    def test_model(self) -> str | None:
+        return self.config.option("test_model")
+
     def validate_credential(self, secret: str) -> tuple[bool, str]:
         from ..ratelimit import parse_headers
 
         # First confirm the key works (cheap list-models call).
-        ok, msg, headers = probe_mod.probe(self.scheme, secret)
+        ok, msg, headers = probe_mod.probe(self.scheme, secret, self.base_url)
         if not ok:
             return ok, msg
 
         # Then fetch live rate-limit headers with one tiny generation call so the
         # gauge is populated immediately (fixes "no rate-limit data yet").
-        f_ok, _f_msg, f_headers = probe_mod.fetch_rate_limits(self.scheme, secret)
+        _f_ok, _f_msg, f_headers = probe_mod.fetch_rate_limits(
+            self.scheme, secret, self.base_url, self.test_model)
         windows = parse_headers(f_headers or headers, self.scheme)
         if windows:
             self.ledger.save_rate_limits(self.name, windows)
@@ -67,7 +76,7 @@ class RateLimitProvider(Provider):
         secret = self.api_key()
         if not secret:
             return
-        ok, _msg, headers = probe_mod.probe(self.scheme, secret)
+        ok, _msg, headers = probe_mod.probe(self.scheme, secret, self.base_url)
         if ok and headers:
             from ..ratelimit import parse_headers
 

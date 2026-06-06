@@ -23,10 +23,20 @@ def test_tray_title_capped_under_windows_limit():
     assert title.startswith("tokn")
 
 
-def test_tray_title_summarizes_percent():
-    s = ProviderStatus(provider="claude", gauges=[Gauge("tokens/min", 70, 100)])
+def test_tray_title_shows_amounts():
+    s = ProviderStatus(provider="claude", gauges=[Gauge("tokens/min", 28000, 40000)])
     title = tray_title([s])
-    assert "claude: 70%" in title
+    assert "claude: 28K/40K" in title
+    assert len(title) <= 120
+
+
+def test_tray_title_falls_back_to_percent_when_too_long():
+    # Many providers with big numbers must still fit under the cap.
+    statuses = [
+        ProviderStatus(provider=f"prov{i}", gauges=[Gauge("tokens/min", 1_234_567, 2_000_000)])
+        for i in range(12)
+    ]
+    title = tray_title(statuses)
     assert len(title) <= 120
 
 

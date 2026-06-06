@@ -201,20 +201,64 @@ def save_open_on_startup(path: str | Path, value: bool) -> None:
     _write_raw(path, raw)
 
 
-def add_provider(path: str | Path, service_key: str) -> None:
-    """Add a catalog service's provider block to the config (idempotent)."""
-    from .catalog import provider_config_for
+def add_provider(path: str | Path, service_key: str, label: str | None = None) -> str:
+    """Add a catalog service to the config and return the new instance name.
+
+    Supports multiple keys per provider: the instance ``name`` is made unique
+    (``claude``, ``claude-2`` …), a ``service`` option records the catalog id, and
+    ``display_name`` is the user's label (e.g. "Claude — Work").
+    """
+    from .catalog import get, provider_config_for
 
     path = Path(path).expanduser()
     raw = _read_raw(path)
     providers = raw.get("providers") or []
     if not isinstance(providers, list):
         raise ConfigError("'providers' must be a list")
-    if any(isinstance(p, dict) and p.get("name") == service_key for p in providers):
-        return  # already added
-    providers.append(provider_config_for(service_key))
+
+    existing = {p.get("name") for p in providers if isinstance(p, dict)}
+    name = service_key
+    i = 2
+    while name in existing:
+        name = f"{service_key}-{i}"
+        i += 1
+
+    cfg = provider_config_for(service_key)
+    cfg["name"] = name
+    cfg["service"] = service_key
+    svc = get(service_key)
+    base = svc.display_name if svc else service_key
+    cfg["display_name"] = f"{base} — {label}" if label else base
+
+    providers.append(cfg)
     raw["providers"] = providers
     _write_raw(path, raw)
+    return name
+
+
+def group_by_service(providers: list) -> list:
+    """Order providers so instances of the same service sit together.
+
+    Preserves the first-appearance order of each service group. Works for both
+    ``ProviderConfig`` objects and raw dicts.
+    """
+    def svc(p):
+        if hasattr(p, "option"):
+            return p.option("service", p.name)
+        return p.get("service", p.get("name"))
+
+    order: list[str] = []
+    groups: dict[str, list] = {}
+    for p in providers:
+        s = svc(p)
+        if s not in groups:
+            groups[s] = []
+            order.append(s)
+        groups[s].append(p)
+    out: list = []
+    for s in order:
+        out.extend(groups[s])
+    return out
 
 
 def remove_provider(path: str | Path, name: str) -> None:

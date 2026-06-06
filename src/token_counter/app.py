@@ -35,9 +35,11 @@ def _load(path: str):
 
 def _cmd_run(args) -> int:
     from . import startup as startup_mod
+    from .bootstrap import log_startup
     from .server import UsageServer
     from .tray import TrayApp
 
+    log_startup()  # one version line in the log, for the tray process only
     config, ledger, store = _load(args.config)
 
     # Honor the saved "open on startup" preference (Windows registry).
@@ -232,7 +234,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     from .bootstrap import init, report_fatal
 
-    init()  # make stdout/stderr safe + set the Windows AppUserModelID
+    # Make stdout/stderr safe + set the AppUserModelID. The version line is only
+    # logged by the long-running tray (run), not every short-lived subcommand.
+    init(log_version=False)
 
     parser = build_parser()
     args = parser.parse_args(argv)

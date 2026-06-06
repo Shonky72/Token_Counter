@@ -65,10 +65,11 @@ def log_startup() -> None:
         pass
 
 
-def init() -> None:
+def init(log_version: bool = True) -> None:
     ensure_streams()
     set_app_user_model_id()
-    log_startup()
+    if log_version:
+        log_startup()
 
 
 def report_fatal(exc: BaseException) -> None:
