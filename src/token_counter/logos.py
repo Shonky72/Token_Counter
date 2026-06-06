@@ -13,12 +13,31 @@ from pathlib import Path
 
 LOGO_DIR = Path("~/.token_counter/logos").expanduser()
 
+
+def _bundled_dir() -> Path | None:
+    """Folder of bundled real-logo PNGs shipped with the package (if present)."""
+    try:
+        from importlib.resources import files
+
+        return Path(str(files("token_counter") / "assets" / "logos"))
+    except Exception:
+        guess = Path(__file__).resolve().parent / "assets" / "logos"
+        return guess if guess.exists() else None
+
+
+def _bundled_png(key: str) -> Path | None:
+    d = _bundled_dir()
+    if d is None:
+        return None
+    candidate = d / f"{key}.png"
+    return candidate if candidate.exists() else None
+
 # Brand accent colour per service id.
 _BRAND = {
     "openai": (16, 163, 127),
     "claude": (217, 119, 87),
     "gemini": (66, 133, 244),
-    "grok": (30, 30, 32),
+    "grok": (236, 236, 237),       # near-white: xAI mark reads on the dark bg
     "deepseek": (77, 107, 254),
     "mistral": (255, 143, 0),
     "groq": (242, 78, 30),
@@ -182,7 +201,8 @@ def provider_logo_image(name: str, size: int = 28, scheme: str | None = None):
     from PIL import Image, ImageDraw
 
     key = provider_key(name, scheme)
-    png = _user_png(name, key)
+    # Precedence: user override → bundled real logo → drawn glyph.
+    png = _user_png(name, key) or _bundled_png(key)
     if png is not None:
         return Image.open(png).convert("RGBA").resize((size, size), Image.LANCZOS)
 

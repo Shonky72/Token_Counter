@@ -11,12 +11,15 @@ are no image assets to ship. Provider accent colors come from the view-model.
 
 from __future__ import annotations
 
+import math
+import time
 from pathlib import Path
 
 from . import startup as startup_mod
 from .auth import CredentialStore, load_credentials_into_env
 from .config import AppConfig, load_config, save_open_on_startup
 from .engine import Engine
+from .flap import FlapDisplay
 from .icons import app_icon_image
 from .ledger import Ledger
 from .logos import provider_logo_image
@@ -26,12 +29,36 @@ from .viewmodel import (
     CompactVM,
     build_cards,
     build_compact,
-    format_count,
-    reel_frames,
 )
 
 # Shared dark palette (see theme.py) so the dashboard + login match.
-from .theme import BG, CARD, CARD_BORDER, SUBTEXT, TEXT, TRACK, mix
+from .theme import BG, CARD, CARD_BORDER, SUBTEXT, TEXT, TRACK, lighten, mix
+
+# Animation timing (the reveal "flap" must run ≥3s and cascade down the list).
+REVEAL_DUR = 3.2      # seconds the split-flap reveal runs per card
+STAGGER = 0.30        # seconds between successive cards starting (one-by-one)
+EASE_DUR = 0.5        # seconds for a quiet value-change gauge ease
+FRAME_MS = 16         # ~60fps master animation clock
+
+
+def _clamp(v, lo=0.0, hi=100.0):
+    return lo if v < lo else hi if v > hi else v
+
+
+def _ease_out(p: float) -> float:
+    return 1 - (1 - p) ** 3
+
+
+def _hunt_pct(progress: float, target: float) -> float:
+    """Gauge percent during a reveal: ramps (with an overshoot) while wobbling,
+    then converges exactly on ``target`` — it "doesn't know where to land"."""
+    if progress >= 1.0:
+        return target
+    c1, c3 = 1.70158, 2.70158
+    ease_back = 1 + c3 * (progress - 1) ** 3 + c1 * (progress - 1) ** 2  # ease-out-back
+    ramp = target * ease_back
+    wobble = math.sin(progress * 6 * math.pi) * 22 * (1 - progress)
+    return _clamp(ramp + wobble)
 
 
 def _engine_for(config: AppConfig) -> Engine:
@@ -67,6 +94,11 @@ def _draw_ring(canvas, x, y, d, percent, accent):
     canvas.create_oval(x, y, x + d, y + d, outline=TRACK, width=pad)
     if percent:
         extent = -max(0.5, percent) * 3.6
+        # Soft glow underneath, then the crisp accent arc on top.
+        canvas.create_arc(
+            x - 2, y - 2, x + d + 2, y + d + 2, start=90, extent=extent,
+            outline=lighten(accent, 0.28), width=pad + 4, style="arc",
+        )
         canvas.create_arc(
             x, y, x + d, y + d, start=90, extent=extent,
             outline=accent, width=pad, style="arc",
@@ -101,6 +133,8 @@ class Dashboard:
         self.statuses = []
         self._cards: dict = {}
         self._card_keys = None
+        self._animators: dict = {}      # provider -> active animation state
+        self._anim_running = False
 
         self.root = tk.Tk()
         self.root.title("tokn")
@@ -172,6 +206,7 @@ class Dashboard:
         self._cards = {}
         vms = self._vms()
         self._card_keys = [vm.provider for vm in vms]
+        self._animators = {}
         if not vms:
             self.tk.Label(
                 self.body,
@@ -181,16 +216,30 @@ class Dashboard:
             return
         for vm in vms:
             self._create_card(vm)
+        self._start_cascade()  # flap each card's number in, one-by-one down the list
 
     def _update_cards(self):
         vms = self._vms()
         if [vm.provider for vm in vms] != getattr(self, "_card_keys", None):
             self._build_cards()
             return
-        # Periodic refresh: update numbers quietly (no reel — that only plays
-        # when the view first opens, so it never spins constantly).
+        # Periodic refresh: update quietly. The flap reveal only plays on open;
+        # here we just set the new amount and gently ease the gauge if it changed.
         for vm in vms:
-            self._apply_card(vm, reveal=False)
+            c = self._cards.get(vm.provider)
+            if c is None:
+                continue
+            c["accent"] = vm.accent
+            c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
+            c["reset_var"].set(vm.reset_text or "")
+            if vm.provider in self._animators:
+                # A reveal/ease is still running — let it finish with fresh targets.
+                c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
+                continue
+            if vm.primary_text != c.get("primary_text") or vm.percent != c.get("ring_pct"):
+                c["flap"].set_static(vm.primary_text)
+                self._register_ease(c, c.get("ring_pct"), vm.percent, vm.accent)
+                c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
 
     def _update_resets(self):
         if not self._cards:
@@ -200,14 +249,20 @@ class Dashboard:
             if c is not None:
                 c["reset_var"].set(vm.reset_text or "")
 
+    def _mono_font(self, size=11, weight="bold"):
+        from .fonts import app_font_family
+
+        return (app_font_family(), size, weight)
+
     # --- one card ------------------------------------------------------
     def _create_card(self, vm: CardVM):
         tk = self.tk
         card = tk.Frame(self.body, bg=CARD, highlightbackground=CARD_BORDER,
-                        highlightthickness=1)
+                        highlightthickness=2)
         card.pack(fill="x", pady=6)
         # Accent left strip for a touch of colour.
-        tk.Frame(card, bg=vm.accent, width=3).pack(side="left", fill="y")
+        strip = tk.Frame(card, bg=vm.accent, width=3)
+        strip.pack(side="left", fill="y")
         inner = tk.Frame(card, bg=CARD)
         inner.pack(side="left", fill="x", expand=True, padx=12, pady=10)
 
@@ -222,19 +277,19 @@ class Dashboard:
         pulse = tk.Canvas(head, width=12, height=12, bg=CARD, highlightthickness=0)
         pulse.pack(side="right")
 
-        num_var = tk.StringVar()
         reset_var = tk.StringVar(value=vm.reset_text or "")
         sub_var = tk.StringVar(value="\n".join(vm.sub_lines))
-        c = {"style": vm.style, "num_var": num_var, "reset_var": reset_var,
-             "sub_var": sub_var, "limit": vm.limit, "unit": vm.unit, "used": 0,
-             "accent": vm.accent, "anim": None, "pulse": pulse, "card": card}
+        c = {"style": vm.style, "reset_var": reset_var, "sub_var": sub_var,
+             "limit": vm.limit, "unit": vm.unit, "accent": vm.accent,
+             "pulse": pulse, "card": card, "strip": strip, "provider": vm.provider,
+             "primary_text": vm.primary_text, "ring_pct": vm.percent}
 
         row = tk.Frame(inner, bg=CARD)
         row.pack(fill="x", pady=(8, 0))
 
         if vm.style == "bar":
-            tk.Label(row, textvariable=num_var, bg=CARD, fg=TEXT,
-                     font=("Consolas", 13, "bold")).pack(anchor="w")
+            flap = FlapDisplay(row, tk, bg=CARD, font=self._mono_font(11))
+            flap.widget().pack(anchor="w")
             canvas = tk.Canvas(row, height=8, bg=CARD, highlightthickness=0)
             canvas.pack(fill="x", pady=(6, 4))
             c["canvas"] = canvas
@@ -250,28 +305,95 @@ class Dashboard:
             c["canvas"] = canvas
             info = tk.Frame(row, bg=CARD)
             info.pack(side="left", fill="x", padx=12)
-            tk.Label(info, textvariable=num_var, bg=CARD, fg=TEXT,
-                     font=("Consolas", 13, "bold")).pack(anchor="w")
+            flap = FlapDisplay(info, tk, bg=CARD, font=self._mono_font(11))
+            flap.widget().pack(anchor="w")
             tk.Label(info, textvariable=sub_var, bg=CARD, fg=SUBTEXT,
                      font=("Segoe UI", 8), justify="left").pack(anchor="w")
             tk.Label(info, textvariable=reset_var, bg=CARD, fg=SUBTEXT,
                      font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
 
+        c["flap"] = flap
+        # Reserve width with blank tiles so the cascade doesn't shift layout.
+        flap.set_static(" " * max(1, len(vm.primary_text)))
         self._cards[vm.provider] = c
-        self._attach_hover(card, vm.accent)
-        # First reveal: play the reel + ease the gauge from zero (once, on open).
+        self._attach_hover(c)
         self._draw_gauge(c, 0, vm.accent)
-        self._apply_card(vm, reveal=True)
         self._ensure_pulse()
 
+    # --- reveal cascade + master animation clock -----------------------
+    def _start_cascade(self):
+        now = time.monotonic()
+        for i, prov in enumerate(self._card_keys or []):
+            c = self._cards.get(prov)
+            if c is None:
+                continue
+            self._animators[prov] = {
+                "kind": "reveal", "c": c, "text": c["primary_text"],
+                "tpct": c["ring_pct"] or 0, "ring": c["ring_pct"],
+                "accent": c["accent"], "start": now + i * STAGGER, "dur": REVEAL_DUR,
+            }
+        self._ensure_anim_loop()
+
+    def _register_ease(self, c, from_pct, to_pct, accent):
+        if from_pct is None or to_pct is None:
+            self._draw_gauge(c, to_pct, accent)
+            return
+        self._animators[c["provider"]] = {
+            "kind": "ease", "c": c, "from": from_pct, "to": to_pct,
+            "accent": accent, "start": time.monotonic(), "dur": EASE_DUR,
+        }
+        self._ensure_anim_loop()
+
+    def _ensure_anim_loop(self):
+        if self._anim_running or not self._animators:
+            return
+        self._anim_running = True
+        self._anim_loop()
+
+    def _anim_loop(self):
+        now = time.monotonic()
+        done = []
+        for key, a in list(self._animators.items()):
+            c = a["c"]
+            p = (now - a["start"]) / a["dur"]
+            if p < 0:
+                p = 0.0
+            prog = min(1.0, p)
+            try:
+                if a["kind"] == "reveal":
+                    c["flap"].render_progress(a["text"], prog, a["accent"])
+                    if prog >= 1.0:
+                        self._draw_gauge(c, a["ring"], a["accent"])
+                        done.append(key)
+                    else:
+                        self._draw_gauge(c, _hunt_pct(prog, a["tpct"]), a["accent"])
+                else:  # ease
+                    val = a["from"] + (a["to"] - a["from"]) * _ease_out(prog)
+                    self._draw_gauge(c, a["to"] if prog >= 1.0 else val, a["accent"])
+                    if prog >= 1.0:
+                        done.append(key)
+            except Exception:
+                done.append(key)
+        for k in done:
+            self._animators.pop(k, None)
+        if self._animators:
+            try:
+                self.root.after(FRAME_MS, self._anim_loop)
+            except Exception:
+                self._anim_running = False
+        else:
+            self._anim_running = False
+
     # --- hover highlight ----------------------------------------------
-    def _attach_hover(self, card, accent):
+    def _attach_hover(self, c):
+        card, strip, accent = c["card"], c["strip"], c["accent"]
         state = {"n": 0}
 
         def enter(_):
             state["n"] += 1
             try:
                 card.configure(highlightbackground=accent)
+                strip.configure(bg=lighten(accent, 0.2))
             except Exception:
                 pass
 
@@ -281,6 +403,7 @@ class Dashboard:
                 state["n"] = 0
                 try:
                     card.configure(highlightbackground=CARD_BORDER)
+                    strip.configure(bg=accent)
                 except Exception:
                     pass
 
@@ -333,54 +456,6 @@ class Dashboard:
             _draw_bar(canvas, 0, 0, w, 8, p or 0, accent)
         else:
             _draw_ring(canvas, 4, 4, 64, p, accent)
-
-    def _apply_card(self, vm: CardVM, reveal: bool):
-        c = self._cards.get(vm.provider)
-        if c is None:
-            return
-        c["limit"], c["unit"], c["accent"] = vm.limit, vm.unit, vm.accent
-        c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
-        c["reset_var"].set(vm.reset_text or "")
-        target = 0 if vm.error else vm.used
-        target_pct = 0 if (vm.error or vm.percent is None) else vm.percent
-        final_text = "—" if vm.error else None
-        ring_pct = None if vm.error else vm.percent
-        if reveal:
-            self._animate_reveal(c, target, target_pct, ring_pct, final_text)
-        else:
-            self._cancel_anim(c)
-            c["num_var"].set(final_text or format_count(target, vm.limit, vm.unit))
-            self._draw_gauge(c, ring_pct, vm.accent)
-        c["used"] = target
-
-    def _cancel_anim(self, c):
-        if c.get("anim") is not None:
-            try:
-                self.root.after_cancel(c["anim"])
-            except Exception:
-                pass
-            c["anim"] = None
-
-    def _animate_reveal(self, c, target, target_pct, ring_pct, final_text):
-        # Slot-machine reel for the number + an eased gauge fill, played once.
-        self._cancel_anim(c)
-        frames = reel_frames(target)
-        n = len(frames)
-
-        def step(i=0):
-            c["num_var"].set(format_count(frames[i], c["limit"], c["unit"]))
-            frac = (i + 1) / n
-            self._draw_gauge(c, (target_pct or 0) * frac, c["accent"])
-            if i + 1 < n:
-                delay = 35 if i < 14 else 55
-                c["anim"] = self.root.after(delay, lambda: step(i + 1))
-            else:
-                if final_text is not None:
-                    c["num_var"].set(final_text)
-                self._draw_gauge(c, ring_pct, c["accent"])
-                c["anim"] = None
-
-        step(0)
 
     # --- window position memory ----------------------------------------
     def _on_configure(self, event):
@@ -457,20 +532,22 @@ class SettingsDialog:
     def _startup_status(self) -> str:
         if not startup_mod.is_supported():
             return "Startup registration is only available on Windows."
-        return "Registered in HKCU Run." if startup_mod.is_enabled() else "Not registered."
+        return "Registered to launch at login." if startup_mod.is_enabled() else "Not registered."
 
     def _toggle_startup(self):
         value = self.startup_var.get()
+        detail = ""
         if startup_mod.is_supported():
-            ok = startup_mod.set_enabled(value)
+            ok, detail = startup_mod.set_enabled_detailed(value)
             if not ok:
-                self.startup_var.set(not value)
+                self.startup_var.set(not value)  # revert the checkbox on failure
         # Persist the preference to config regardless of platform.
         try:
             save_open_on_startup(self.dash.config_path, value)
         except Exception:
             pass
-        self.status.config(text=self._startup_status())
+        # Show the concrete outcome (exact command registered, or the real error).
+        self.status.config(text=detail or self._startup_status())
 
 
 class CompactPopup:
@@ -489,25 +566,35 @@ class CompactPopup:
         self.root.attributes("-topmost", True)
         self._photos: list = []
 
+        self._rows: dict = {}
+        self._row_keys: list = []
+        self._animators: dict = {}
+        self._anim_running = False
+
         self.frame = tk.Frame(self.root, bg=CARD, padx=10, pady=8)
         self.frame.pack(padx=1, pady=1)
-        self._render()
+        self._build()
         self._position()
+        self._start_cascade()
         self.root.bind("<FocusOut>", lambda e: self.root.destroy())
         self.root.bind("<Escape>", lambda e: self.root.destroy())
         self.root.after(max(5, config.refresh_seconds) * 1000, self._refresh)
 
-    def _refresh(self):
-        self._render()
-        self.root.after(max(5, self.config.refresh_seconds) * 1000, self._refresh)
+    def _mono_font(self, size=10, weight="bold"):
+        from .fonts import app_font_family
 
-    def _render(self):
+        return (app_font_family(), size, weight)
+
+    def _build(self):
         for w in self.frame.winfo_children():
             w.destroy()
+        self._rows = {}
         tk = self.tk
         rows: list[CompactVM] = build_compact(self.engine.snapshot(), self.config.providers)
+        self._row_keys = [vm.provider for vm in rows]
         if not rows:
             tk.Label(self.frame, text="No providers", bg=CARD, fg=SUBTEXT).pack()
+            return
         for vm in rows:
             r = tk.Frame(self.frame, bg=CARD)
             r.pack(fill="x", pady=3)
@@ -516,11 +603,74 @@ class CompactPopup:
             tk.Label(r, image=logo, bg=CARD).pack(side="left")
             tk.Label(r, text=vm.title, bg=CARD, fg=TEXT,
                      font=("Segoe UI", 10, "bold")).pack(side="left", padx=6)
-            tk.Label(r, text=vm.primary_text, bg=CARD, fg=SUBTEXT,
-                     font=("Segoe UI", 9)).pack(side="right")
+            flap = FlapDisplay(r, tk, bg=CARD, font=self._mono_font(9),
+                               tile_w=9, tile_h=16, fg=SUBTEXT)
+            flap.widget().pack(side="right")
+            flap.set_static(" " * max(1, len(vm.primary_text)))
             bar = tk.Canvas(self.frame, height=5, width=260, bg=CARD, highlightthickness=0)
             bar.pack(fill="x")
-            _draw_bar(bar, 0, 0, 260, 5, vm.percent or 0, vm.accent)
+            self._rows[vm.provider] = {"flap": flap, "bar": bar, "text": vm.primary_text,
+                                       "pct": vm.percent, "accent": vm.accent}
+            _draw_bar(bar, 0, 0, 260, 5, 0, vm.accent)
+
+    def _refresh(self):
+        rows: list[CompactVM] = build_compact(self.engine.snapshot(), self.config.providers)
+        if [vm.provider for vm in rows] != self._row_keys:
+            self._build()
+            self._start_cascade()
+        else:
+            for vm in rows:  # quiet update
+                row = self._rows.get(vm.provider)
+                if row is None or vm.provider in self._animators:
+                    continue
+                if vm.primary_text != row["text"]:
+                    row["flap"].set_static(vm.primary_text)
+                    row["text"] = vm.primary_text
+                row["pct"] = vm.percent
+                _draw_bar(row["bar"], 0, 0, 260, 5, vm.percent or 0, vm.accent)
+        self.root.after(max(5, self.config.refresh_seconds) * 1000, self._refresh)
+
+    # --- cascade reveal (shared with the dashboard's approach) ----------
+    def _start_cascade(self):
+        now = time.monotonic()
+        for i, prov in enumerate(self._row_keys):
+            row = self._rows.get(prov)
+            if row is None:
+                continue
+            self._animators[prov] = {"row": row, "start": now + i * STAGGER,
+                                     "dur": REVEAL_DUR}
+        self._ensure_anim_loop()
+
+    def _ensure_anim_loop(self):
+        if self._anim_running or not self._animators:
+            return
+        self._anim_running = True
+        self._anim_loop()
+
+    def _anim_loop(self):
+        now = time.monotonic()
+        done = []
+        for key, a in list(self._animators.items()):
+            row = a["row"]
+            p = (now - a["start"]) / a["dur"]
+            prog = 0.0 if p < 0 else min(1.0, p)
+            try:
+                row["flap"].render_progress(row["text"], prog, row["accent"])
+                pct = (row["pct"] or 0) if prog >= 1.0 else _hunt_pct(prog, row["pct"] or 0)
+                _draw_bar(row["bar"], 0, 0, 260, 5, pct, row["accent"])
+                if prog >= 1.0:
+                    done.append(key)
+            except Exception:
+                done.append(key)
+        for k in done:
+            self._animators.pop(k, None)
+        if self._animators:
+            try:
+                self.root.after(FRAME_MS, self._anim_loop)
+            except Exception:
+                self._anim_running = False
+        else:
+            self._anim_running = False
 
     def _position(self):
         self.root.update_idletasks()

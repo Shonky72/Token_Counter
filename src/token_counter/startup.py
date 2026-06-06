@@ -41,9 +41,7 @@ def _open_key(write: bool):
     return winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, access)
 
 
-def is_enabled() -> bool:
-    if not is_supported():
-        return False
+def _registry_enabled() -> bool:
     import winreg
 
     try:
@@ -56,10 +54,21 @@ def is_enabled() -> bool:
         return False
 
 
-def enable(command: str | None = None) -> bool:
-    """Register the startup entry. Returns True on success."""
+def is_enabled() -> bool:
+    """True if tokn is registered to launch at login by *either* mechanism."""
     if not is_supported():
         return False
+    if _registry_enabled():
+        return True
+    try:
+        from .shortcut import startup_shortcut_exists
+
+        return startup_shortcut_exists()
+    except Exception:
+        return False
+
+
+def _registry_enable(command: str | None = None) -> bool:
     import winreg
 
     try:
@@ -72,10 +81,7 @@ def enable(command: str | None = None) -> bool:
         return False
 
 
-def disable() -> bool:
-    """Remove the startup entry. Returns True on success (or if already absent)."""
-    if not is_supported():
-        return False
+def _registry_disable() -> bool:
     import winreg
 
     try:
@@ -88,5 +94,73 @@ def disable() -> bool:
         return False
 
 
+def _shortcut_target() -> tuple[str, str]:
+    """(target, arguments) for the Startup-folder .lnk."""
+    if getattr(sys, "frozen", False):
+        return str(Path(sys.executable)), "run"          # bare exe → tray
+    exe = Path(sys.executable)
+    pythonw = exe.with_name("pythonw.exe")
+    runner = pythonw if pythonw.exists() else exe
+    return str(runner), "-m token_counter run"
+
+
+def enable_detailed(command: str | None = None) -> tuple[bool, str]:
+    """Register startup via the registry Run key AND the Startup-folder shortcut.
+
+    Returns (ok, human-readable detail) — ok is True if at least one mechanism
+    took. The detail names the exact command/path registered (or the failure).
+    """
+    if not is_supported():
+        return False, "startup registration is only available on Windows"
+    reg_ok = _registry_enable(command)
+    lnk_ok = False
+    lnk_info = ""
+    try:
+        from .shortcut import create_startup_shortcut
+
+        target, args = _shortcut_target()
+        lnk_ok, lnk_info = create_startup_shortcut(target=target, arguments=args)
+    except Exception as exc:  # pragma: no cover - Windows/COM only
+        lnk_info = f"shortcut error: {exc}"
+    if reg_ok or lnk_ok:
+        cmd = command or startup_command()
+        where = []
+        if reg_ok:
+            where.append("HKCU Run")
+        if lnk_ok:
+            where.append("Startup folder")
+        return True, f"Registered ({', '.join(where)}). Launches: {cmd}"
+    return False, f"Could not register startup. {lnk_info}".strip()
+
+
+def disable_detailed() -> tuple[bool, str]:
+    if not is_supported():
+        return False, "startup registration is only available on Windows"
+    reg_ok = _registry_disable()
+    lnk_ok = True
+    try:
+        from .shortcut import remove_startup_shortcut
+
+        lnk_ok, _ = remove_startup_shortcut()
+    except Exception:  # pragma: no cover - Windows/COM only
+        lnk_ok = False
+    ok = reg_ok and lnk_ok
+    return ok, "Removed from startup." if ok else "Could not fully remove startup entry."
+
+
+def enable(command: str | None = None) -> bool:
+    """Register the startup entry. Returns True on success."""
+    return enable_detailed(command)[0]
+
+
+def disable() -> bool:
+    """Remove the startup entry. Returns True on success (or if already absent)."""
+    return disable_detailed()[0]
+
+
 def set_enabled(value: bool, command: str | None = None) -> bool:
     return enable(command) if value else disable()
+
+
+def set_enabled_detailed(value: bool, command: str | None = None) -> tuple[bool, str]:
+    return enable_detailed(command) if value else disable_detailed()

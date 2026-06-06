@@ -62,7 +62,23 @@ def apply_ttk_dark(root) -> None:
         style.configure("TEntry", fieldbackground="#1c1c22", foreground=TEXT,
                         insertcolor=TEXT)
         style.configure("TCombobox", fieldbackground="#1c1c22", foreground=TEXT,
-                        background=CARD)
+                        background=CARD, arrowcolor=TEXT, bordercolor=CARD_BORDER)
+        # The readonly combobox uses the "readonly" state, not the default one.
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", "#1c1c22"), ("disabled", CARD)],
+            foreground=[("readonly", TEXT), ("disabled", SUBTEXT)],
+            selectbackground=[("readonly", "#1c1c22")],
+            selectforeground=[("readonly", TEXT)],
+            background=[("active", CARD)],
+        )
+        # The combobox *popdown list* is a classic Tk Listbox that ttk.Style does
+        # NOT reach — style it through the option database so it's dark + readable.
+        root.option_add("*TCombobox*Listbox.background", CARD)
+        root.option_add("*TCombobox*Listbox.foreground", TEXT)
+        root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+        root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        root.option_add("*TCombobox*Listbox.borderWidth", 0)
         root.configure(bg=BG)
     except Exception:
         pass
