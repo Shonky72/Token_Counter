@@ -52,3 +52,21 @@ def test_flap_string_preserves_length_and_finishes():
     target = "1.2M / 2.0M"
     assert len(flap_string(target, 0.3)) == len(target)
     assert flap_string(target, 1.0) == target
+
+
+def test_digit_rolls_only_within_0_9():
+    # A digit tile must roll like an odometer — always a digit, never a symbol.
+    for p in (0.05, 0.15, 0.25, 0.35):
+        g = flap_glyph("8", 6, p, 10)
+        assert g in "0123456789"
+
+
+def test_letter_rolls_within_its_case():
+    for p in (0.05, 0.2, 0.35):
+        assert flap_glyph("M", 2, p, 8) in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        assert flap_glyph("k", 2, p, 8) in "abcdefghijklmnopqrstuvwxyz"
+
+
+def test_symbols_do_not_roll():
+    for ch in " ./%":
+        assert flap_glyph(ch, 1, 0.1, 8) == ch

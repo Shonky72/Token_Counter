@@ -102,6 +102,45 @@ def test_startup_and_view_mode_defaults_and_parsing():
     assert cfg2.view_mode == "compact"
 
 
+def test_display_settings_defaults_and_parsing():
+    cfg = parse_config({"providers": []})
+    assert cfg.theme == "dark"
+    assert cfg.token_basis == "used"
+    assert cfg.display_metric == "amount"
+    assert cfg.alerts_enabled is True
+    assert cfg.alert_threshold == 90
+    assert cfg.show_cost is True and cfg.show_sparkline is True
+    cfg2 = parse_config({
+        "theme": "light", "token_basis": "remaining", "display_metric": "percent",
+        "alerts_enabled": False, "alert_threshold": 75, "show_cost": False,
+        "providers": [],
+    })
+    assert cfg2.theme == "light" and cfg2.token_basis == "remaining"
+    assert cfg2.display_metric == "percent" and cfg2.alerts_enabled is False
+    assert cfg2.alert_threshold == 75 and cfg2.show_cost is False
+
+
+def test_save_display_settings_roundtrip(tmp_path):
+    from token_counter.config import (
+        save_display_metric,
+        save_setting,
+        save_theme,
+        save_token_basis,
+    )
+
+    path = tmp_path / "config.yaml"
+    ensure_config(path)
+    save_theme(path, "light")
+    save_token_basis(path, "remaining")
+    save_display_metric(path, "percent")
+    save_setting(path, "alert_threshold", 80)
+    cfg = load_config(path)
+    assert cfg.theme == "light" and cfg.token_basis == "remaining"
+    assert cfg.display_metric == "percent" and cfg.alert_threshold == 80
+    # other keys preserved
+    assert cfg.refresh_seconds == load_config(path).refresh_seconds
+
+
 def test_ensure_config_creates_valid_default(tmp_path):
     path = tmp_path / "nested" / "config.yaml"
     assert not path.exists()

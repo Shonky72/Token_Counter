@@ -37,6 +37,7 @@ class CardVM:
     style: str  # "ring" | "bar"
     percent: int | None
     primary_text: str
+    hover_text: str = ""        # the "other" metric, shown on hover
     sub_lines: list[str] = field(default_factory=list)
     reset_text: str | None = None
     detail: str | None = None
@@ -44,6 +45,7 @@ class CardVM:
     provider: str = ""          # unique instance name
     service: str = ""           # catalog service id (for logo/accent)
     scheme: str | None = None   # e.g. "anthropic" (helps pick the logo)
+    usage_url: str | None = None  # billing/usage console (click-through)
     used: int = 0               # primary gauge values (for the count-up animation)
     limit: int | None = None
     unit: str = "tokens"
@@ -87,6 +89,7 @@ class CompactVM:
     accent: str
     percent: int | None
     primary_text: str
+    hover_text: str = ""
     provider: str = ""
     service: str = ""
     scheme: str | None = None
@@ -115,6 +118,37 @@ def format_count(used: int, limit: int | None, unit: str) -> str:
     else:  # messages/requests: show raw integers
         used_s, limit_s = str(used), (str(limit) if limit is not None else "∞")
     return f"{used_s} / {limit_s} {noun}"
+
+
+def basis_percent(gauge: Gauge, basis: str = "used") -> float | None:
+    """The percent to show/draw for ``basis`` ("used" → used%, "remaining" → left%)."""
+    pct = gauge.percent
+    if pct is None:
+        return None
+    if basis == "remaining" and gauge.limit is not None:
+        return max(0.0, 100.0 - pct)
+    return pct
+
+
+def _amount_str(gauge: Gauge, basis: str) -> str:
+    if basis == "remaining" and gauge.limit is not None:
+        rem = gauge.remaining or 0
+        return f"{human(rem)} left" if gauge.unit == "tokens" else f"{rem} left"
+    return format_count(gauge.used, gauge.limit, gauge.unit)
+
+
+def display_strings(gauge: Gauge, metric: str = "amount", basis: str = "used") -> tuple[str, str]:
+    """Return (primary, opposite) display strings for a gauge.
+
+    ``metric`` chooses the headline ("amount" or "percent"); the other one is the
+    hover value. ``basis`` chooses used vs remaining for both.
+    """
+    shown = basis_percent(gauge, basis)
+    pct_str = f"{round(shown)}%" if shown is not None else "—"
+    amount = _amount_str(gauge, basis)
+    if metric == "percent":
+        return pct_str, amount
+    return amount, pct_str
 
 
 def accent_for(name: str, override: str | None = None) -> str:
@@ -150,7 +184,8 @@ def _primary_gauge(status: ProviderStatus, preferred: str | None) -> Gauge | Non
     return status.gauges[0]
 
 
-def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> CardVM:
+def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None,
+               metric: str = "amount", basis: str = "used") -> CardVM:
     style = (cfg.option("display", "ring") if cfg else "ring")
     color_override = cfg.option("color") if cfg else None
     preferred = cfg.option("primary") if cfg else None
@@ -158,22 +193,26 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
     accent = accent_for(service, color_override)
     title = (cfg.option("display_name") if cfg else None) or status.provider
     scheme = cfg.option("scheme") if cfg else None
+    usage_url = cfg.option("usage_url") if cfg else None
 
     if status.error:
         return CardVM(
             title=title, accent=accent, style=style, percent=None,
             primary_text="—", error=status.error, detail=status.detail,
             provider=status.provider, service=service, scheme=scheme,
+            usage_url=usage_url,
         )
 
     primary = _primary_gauge(status, preferred)
     if primary is None:
         return CardVM(title=title, accent=accent, style=style, percent=None,
                       primary_text="no data", detail=status.detail,
-                      provider=status.provider, service=service, scheme=scheme)
+                      provider=status.provider, service=service, scheme=scheme,
+                      usage_url=usage_url)
 
-    percent = round(primary.percent) if primary.percent is not None else None
-    primary_text = format_count(primary.used, primary.limit, primary.unit)
+    shown_pct = basis_percent(primary, basis)
+    percent = round(shown_pct) if shown_pct is not None else None
+    primary_text, hover_text = display_strings(primary, metric, basis)
 
     sub_lines = []
     for g in status.gauges:
@@ -188,18 +227,20 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
 
     return CardVM(
         title=title, accent=accent, style=style, percent=percent,
-        primary_text=primary_text, sub_lines=sub_lines,
+        primary_text=primary_text, hover_text=hover_text, sub_lines=sub_lines,
         reset_text=reset_text, detail=status.detail,
         provider=status.provider, service=service, scheme=scheme,
+        usage_url=usage_url,
         used=primary.used, limit=primary.limit, unit=primary.unit,
     )
 
 
 def build_cards(
-    statuses: list[ProviderStatus], configs: list[ProviderConfig] | None = None
+    statuses: list[ProviderStatus], configs: list[ProviderConfig] | None = None,
+    metric: str = "amount", basis: str = "used",
 ) -> list[CardVM]:
     by_name = {c.name: c for c in (configs or [])}
-    cards = [build_card(s, by_name.get(s.provider)) for s in statuses]
+    cards = [build_card(s, by_name.get(s.provider), metric, basis) for s in statuses]
     return _group_cards(cards)
 
 
@@ -220,12 +261,13 @@ def _group_cards(cards: list[CardVM]) -> list[CardVM]:
 
 
 def build_compact(
-    statuses: list[ProviderStatus], configs: list[ProviderConfig] | None = None
+    statuses: list[ProviderStatus], configs: list[ProviderConfig] | None = None,
+    metric: str = "amount", basis: str = "used",
 ) -> list[CompactVM]:
-    cards = build_cards(statuses, configs)
+    cards = build_cards(statuses, configs, metric, basis)
     return [
         CompactVM(title=c.title, accent=c.accent, percent=c.percent,
-                  primary_text=(c.error or c.primary_text),
+                  primary_text=(c.error or c.primary_text), hover_text=c.hover_text,
                   provider=c.provider, service=c.service, scheme=c.scheme)
         for c in cards
     ]

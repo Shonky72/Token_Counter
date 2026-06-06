@@ -91,6 +91,13 @@ class AppConfig:
     ledger_path: str = "~/.token_counter/ledger.db"
     open_on_startup: bool = False
     view_mode: str = "dashboard"  # "dashboard" | "compact"
+    theme: str = "dark"           # "dark" | "light" | "system"
+    token_basis: str = "used"     # "used" | "remaining"
+    display_metric: str = "amount"  # "amount" | "percent"
+    alerts_enabled: bool = True
+    alert_threshold: int = 90     # notify when a provider crosses this %
+    show_cost: bool = True
+    show_sparkline: bool = True
     server: ServerConfig = field(default_factory=ServerConfig)
     providers: list[ProviderConfig] = field(default_factory=list)
 
@@ -155,6 +162,13 @@ def parse_config(raw: dict[str, Any]) -> AppConfig:
         ledger_path=str(raw.get("ledger_path", "~/.token_counter/ledger.db")),
         open_on_startup=bool(raw.get("open_on_startup", False)),
         view_mode=str(raw.get("view_mode", "dashboard")),
+        theme=str(raw.get("theme", "dark")),
+        token_basis=str(raw.get("token_basis", "used")),
+        display_metric=str(raw.get("display_metric", "amount")),
+        alerts_enabled=bool(raw.get("alerts_enabled", True)),
+        alert_threshold=int(raw.get("alert_threshold", 90)),
+        show_cost=bool(raw.get("show_cost", True)),
+        show_sparkline=bool(raw.get("show_sparkline", True)),
         server=server,
         providers=providers,
     )
@@ -199,6 +213,26 @@ def save_open_on_startup(path: str | Path, value: bool) -> None:
     raw = _read_raw(path)
     raw["open_on_startup"] = bool(value)
     _write_raw(path, raw)
+
+
+def save_setting(path: str | Path, key: str, value: Any) -> None:
+    """Persist a single top-level setting, preserving the rest of the file."""
+    path = Path(path).expanduser()
+    raw = _read_raw(path)
+    raw[key] = value
+    _write_raw(path, raw)
+
+
+def save_theme(path: str | Path, value: str) -> None:
+    save_setting(path, "theme", str(value))
+
+
+def save_token_basis(path: str | Path, value: str) -> None:
+    save_setting(path, "token_basis", str(value))
+
+
+def save_display_metric(path: str | Path, value: str) -> None:
+    save_setting(path, "display_metric", str(value))
 
 
 def add_provider(path: str | Path, service_key: str, label: str | None = None) -> str:

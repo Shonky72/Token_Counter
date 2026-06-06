@@ -70,6 +70,34 @@ def tray_meter_image(size: int = 64, percent: float | None = None):
     return app_icon_image(size)
 
 
+def status_color(percent: float | None, threshold: int = 90) -> tuple[int, int, int] | None:
+    """Status-dot colour for a usage percent: green <75, amber <threshold, red ≥."""
+    if percent is None:
+        return None
+    if percent >= threshold:
+        return (224, 76, 76)      # red
+    if percent >= 75:
+        return (235, 169, 60)     # amber
+    return (84, 176, 111)         # green
+
+
+def status_icon_image(size: int = 64, percent: float | None = None, threshold: int = 90):
+    """The brand icon with a small status dot in the corner reflecting ``percent``."""
+    from PIL import Image, ImageDraw
+
+    base = app_icon_image(size).copy()
+    color = status_color(percent, threshold)
+    if color is None:
+        return base
+    draw = ImageDraw.Draw(base)
+    r = max(4, int(size * 0.22))
+    cx = cy = size - r - max(1, int(size * 0.04))
+    # White ring so the dot reads on any icon colour.
+    draw.ellipse((cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2), fill=(255, 255, 255, 255))
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color + (255,))
+    return base
+
+
 def write_ico(path: str, base_size: int = 256) -> str:
     """Write a multi-resolution .ico (from the brand icon) for the executable."""
     img = app_icon_image(base_size)

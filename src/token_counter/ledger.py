@@ -34,6 +34,16 @@ CREATE TABLE IF NOT EXISTS rate_limit_snapshots (
     captured_at  REAL NOT NULL,           -- UTC epoch seconds
     windows_json TEXT NOT NULL            -- normalized windows (see ratelimit.py)
 );
+
+CREATE TABLE IF NOT EXISTS usage_samples (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        REAL NOT NULL,              -- UTC epoch seconds
+    provider  TEXT NOT NULL,
+    used      INTEGER NOT NULL,           -- primary-gauge "used" at sample time
+    limit_val INTEGER,                    -- primary-gauge limit (nullable)
+    percent   REAL                        -- primary-gauge percent (nullable)
+);
+CREATE INDEX IF NOT EXISTS idx_samples_lookup ON usage_samples (provider, ts);
 """
 
 
@@ -138,6 +148,37 @@ class Ledger:
         if row is None:
             return None
         return row["captured_at"], json.loads(row["windows_json"])
+
+    def record_sample(self, provider: str, used: int, limit: int | None = None,
+                      percent: float | None = None, ts: float | None = None) -> None:
+        """Append one usage sample (for sparklines / burn-rate history)."""
+        if ts is None:
+            ts = time.time()
+        with self._lock:
+            self._conn.execute(
+                """INSERT INTO usage_samples (ts, provider, used, limit_val, percent)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (ts, provider, int(used), limit, percent),
+            )
+            self._conn.commit()
+
+    def samples_since(self, provider: str, start: datetime) -> list[tuple[float, int]]:
+        """Return ``(ts, used)`` samples for ``provider`` since ``start`` (asc)."""
+        start_ts = start.astimezone(timezone.utc).timestamp()
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT ts, used FROM usage_samples
+                   WHERE provider = ? AND ts >= ? ORDER BY ts ASC""",
+                (provider, start_ts),
+            ).fetchall()
+        return [(r["ts"], r["used"]) for r in rows]
+
+    def prune_samples(self, older_than: datetime) -> None:
+        """Drop samples older than a cutoff so the table stays small."""
+        cutoff = older_than.astimezone(timezone.utc).timestamp()
+        with self._lock:
+            self._conn.execute("DELETE FROM usage_samples WHERE ts < ?", (cutoff,))
+            self._conn.commit()
 
     def close(self) -> None:
         with self._lock:

@@ -16,6 +16,13 @@ DEFAULT_CONFIG_YAML = """\
 refresh_seconds: 30          # how often the gauges refresh (seconds)
 open_on_startup: false       # also toggleable from the tray / Settings
 view_mode: dashboard         # what the tray icon opens: dashboard | compact
+theme: dark                  # dark | light | system
+token_basis: used            # used | remaining
+display_metric: amount       # amount | percent (hover the number for the other)
+alerts_enabled: true         # desktop notification when usage crosses a threshold
+alert_threshold: 90          # the % that triggers an alert
+show_cost: true              # estimated $ spend on the cards (approximate)
+show_sparkline: true         # 24h usage trend + burn-rate on the cards
 ledger_path: "~/.token_counter/ledger.db"
 
 server:

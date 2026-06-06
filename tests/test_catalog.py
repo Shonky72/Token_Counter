@@ -33,6 +33,13 @@ def test_services_have_help_and_url():
         assert svc.help.strip()
 
 
+def test_every_service_has_usage_url():
+    for key in catalog.service_keys():
+        svc = catalog.get(key)
+        assert svc.usage_url and svc.usage_url.startswith("https://")
+        assert catalog.provider_config_for(key)["usage_url"] == svc.usage_url
+
+
 def test_unknown_service_raises():
     import pytest
 

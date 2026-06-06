@@ -28,8 +28,16 @@ class Engine:
         now = now or datetime.now(timezone.utc)
         statuses: list[ProviderStatus] = []
         for pc in self.config.providers:
-            try:
-                statuses.append(self.providers[pc.name].poll(now))
-            except Exception as exc:  # pragma: no cover - keep the loop alive
-                statuses.append(ProviderStatus(provider=pc.name, error=str(exc)))
+            statuses.append(self.snapshot_one(pc.name, now))
         return statuses
+
+    def snapshot_one(self, name: str, now: datetime | None = None) -> ProviderStatus:
+        """Poll a single provider (for the per-card manual refresh)."""
+        now = now or datetime.now(timezone.utc)
+        provider = self.providers.get(name)
+        if provider is None:
+            return ProviderStatus(provider=name, error="unknown provider")
+        try:
+            return provider.poll(now)
+        except Exception as exc:  # pragma: no cover - keep the loop alive
+            return ProviderStatus(provider=name, error=str(exc))
