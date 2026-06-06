@@ -30,6 +30,14 @@ def test_tray_title_shows_amounts():
     assert len(title) <= 120
 
 
+def test_tray_title_metric_and_basis():
+    s = ProviderStatus(provider="claude", gauges=[Gauge("tokens/min", 28000, 40000)])
+    # percent metric headlines the %
+    assert "claude: 70%" in tray_title([s], metric="percent")
+    # remaining basis shows what's left
+    assert "claude: 12K left" in tray_title([s], metric="amount", basis="remaining")
+
+
 def test_tray_title_falls_back_to_percent_when_too_long():
     # Many providers with big numbers must still fit under the cap.
     statuses = [

@@ -17,14 +17,14 @@ import threading
 from datetime import datetime, timezone
 
 from .engine import Engine
-from .icons import app_icon_image
+from .icons import status_icon_image
 from .models import Gauge, ProviderStatus
-from .render import human, overall_percent, tray_title
+from .render import _primary_gauge, human, overall_percent, tray_title
 
 
-def _make_icon_image(percent: float | None = None):
-    # The tray shows the brand icon (not a usage meter), per the user's request.
-    return app_icon_image(64)
+def _make_icon_image(percent: float | None = None, threshold: int = 90):
+    # Brand icon with a small status dot (green/amber/red) for the worst provider.
+    return status_icon_image(64, percent, threshold)
 
 
 def _gauge_label(g: Gauge) -> str:
@@ -40,13 +40,23 @@ def _gauge_label(g: Gauge) -> str:
 
 class TrayApp:
     def __init__(self, engine: Engine, refresh_seconds: int = 30, server=None,
-                 config_path: str | None = None, default_view: str = "dashboard"):
+                 config_path: str | None = None, default_view: str = "dashboard",
+                 app_config=None):
         self.engine = engine
         self.refresh_seconds = max(5, refresh_seconds)
         self.server = server
         self.config_path = config_path
         self.default_view = default_view
+        cfg = app_config
+        self.alerts_enabled = bool(getattr(cfg, "alerts_enabled", True))
+        self.alert_threshold = int(getattr(cfg, "alert_threshold", 90))
+        self.token_basis = str(getattr(cfg, "token_basis", "used"))
+        self.display_metric = str(getattr(cfg, "display_metric", "amount"))
+        self.theme = str(getattr(cfg, "theme", "dark"))
+        providers = getattr(getattr(engine, "config", None), "providers", []) or []
+        self._usage_urls = {pc.name: pc.option("usage_url") for pc in providers}
         self._statuses: list[ProviderStatus] = []
+        self._last_pct: dict[str, float] = {}  # for threshold-crossing alerts
         self._last_refresh = None  # local datetime of the last successful refresh
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -72,6 +82,9 @@ class TrayApp:
             sub = [MenuItem(_gauge_label(g), None, enabled=False) for g in s.gauges] or [
                 MenuItem("no data yet", None, enabled=False)
             ]
+            if self._usage_urls.get(s.provider):
+                sub = [MenuItem("↗ Open usage page", self._open_usage(s.provider)),
+                       Menu.SEPARATOR] + sub
             items.append(MenuItem(header, Menu(*sub)))
 
         items.append(Menu.SEPARATOR)
@@ -82,12 +95,78 @@ class TrayApp:
         items.append(MenuItem("Open dashboard", self._on_dashboard, default=True))
         items.append(MenuItem("Compact view", self._on_popup))
         items.append(MenuItem("Accounts / Login…", self._on_login))
+        items.append(MenuItem("Display", self._display_menu()))
         items.append(MenuItem(
             "Open on startup", self._on_toggle_startup, checked=lambda i: self._startup_enabled()
         ))
         items.append(MenuItem(self._refresh_label, self._on_refresh))
         items.append(MenuItem("Quit", self._on_quit))
         return Menu(*items)
+
+    def _display_menu(self):
+        from pystray import Menu, MenuItem
+
+        def theme_item(name):
+            return MenuItem(name.capitalize(), self._set_theme(name),
+                            checked=lambda i, n=name: self.theme == n, radio=True)
+
+        def basis_item(name, label):
+            return MenuItem(label, self._set_basis(name),
+                            checked=lambda i, n=name: self.token_basis == n, radio=True)
+
+        def metric_item(name, label):
+            return MenuItem(label, self._set_metric(name),
+                            checked=lambda i, n=name: self.display_metric == n, radio=True)
+
+        return Menu(
+            MenuItem("Theme", Menu(theme_item("dark"), theme_item("light"),
+                                   theme_item("system"))),
+            Menu.SEPARATOR,
+            basis_item("used", "Show: used"),
+            basis_item("remaining", "Show: remaining"),
+            Menu.SEPARATOR,
+            metric_item("amount", "As: amount"),
+            metric_item("percent", "As: percent"),
+        )
+
+    def _save(self, key: str, value) -> None:
+        if not self.config_path:
+            return
+        try:
+            from .config import save_setting
+
+            save_setting(self.config_path, key, value)
+        except Exception:  # pragma: no cover
+            pass
+
+    def _set_theme(self, name):
+        def handler(icon=None, item=None):
+            self.theme = name
+            self._save("theme", name)
+        return handler
+
+    def _set_basis(self, name):
+        def handler(icon=None, item=None):
+            self.token_basis = name
+            self._save("token_basis", name)
+            self._apply()
+        return handler
+
+    def _set_metric(self, name):
+        def handler(icon=None, item=None):
+            self.display_metric = name
+            self._save("display_metric", name)
+            self._apply()
+        return handler
+
+    def _open_usage(self, provider: str):
+        def handler(icon=None, item=None):
+            import webbrowser
+
+            url = self._usage_urls.get(provider)
+            if url:
+                webbrowser.open(url)
+        return handler
 
     @staticmethod
     def _startup_enabled() -> bool:
@@ -100,16 +179,65 @@ class TrayApp:
             return
         with self._lock:
             statuses = list(self._statuses)
-        self._icon.title = tray_title(statuses)
-        self._icon.icon = _make_icon_image(overall_percent(statuses))
+        self._icon.title = tray_title(statuses, metric=self.display_metric,
+                                      basis=self.token_basis)
+        self._icon.icon = _make_icon_image(overall_percent(statuses), self.alert_threshold)
         self._icon.menu = self._build_menu()
 
     def refresh(self) -> None:
-        statuses = self.engine.snapshot(datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        statuses = self.engine.snapshot(now)
+        self._record_samples(statuses, now)
+        self._check_alerts(statuses)
         with self._lock:
             self._statuses = statuses
             self._last_refresh = datetime.now()  # local time for the menu label
         self._apply()
+
+    def _record_samples(self, statuses, now) -> None:
+        """Append a usage sample per provider for the sparkline / burn-rate."""
+        try:
+            ts = now.timestamp()
+            for s in statuses:
+                if s.error:
+                    continue
+                g = _primary_gauge(s)
+                if g is None:
+                    continue
+                self.engine.ledger.record_sample(
+                    s.provider, used=g.used, limit=g.limit, percent=g.percent, ts=ts,
+                )
+            # Keep the samples table small: the sparkline only reads the last 24h,
+            # so trim anything older than a week, roughly hourly.
+            self._sample_count = getattr(self, "_sample_count", 0) + 1
+            if self._sample_count % 120 == 1:
+                from datetime import timedelta
+
+                self.engine.ledger.prune_samples(now - timedelta(days=7))
+        except Exception as exc:  # pragma: no cover - never break the tray
+            print(f"[token-counter] sample record failed: {exc}")
+
+    def _check_alerts(self, statuses) -> None:
+        """Notify once when a provider's worst gauge crosses the threshold upward."""
+        if not self.alerts_enabled:
+            return
+        for s in statuses:
+            pct = None if s.error else s.worst_percent
+            if pct is None:
+                continue
+            prev = self._last_pct.get(s.provider)
+            self._last_pct[s.provider] = pct
+            if prev is not None and prev < self.alert_threshold <= pct:
+                self._notify(
+                    f"{s.provider} is at {pct:.0f}% of its limit.", "tokn — usage alert"
+                )
+
+    def _notify(self, message: str, title: str = "tokn") -> None:
+        try:  # pystray balloon; not all backends support it
+            if self._icon is not None:
+                self._icon.notify(message, title)
+        except Exception:  # pragma: no cover
+            pass
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -177,8 +305,8 @@ class TrayApp:
             statuses = list(self._statuses)
         self._icon = pystray.Icon(
             "tokn",
-            icon=_make_icon_image(overall_percent(statuses)),
-            title=tray_title(statuses),
+            icon=_make_icon_image(overall_percent(statuses), self.alert_threshold),
+            title=tray_title(statuses, metric=self.display_metric, basis=self.token_basis),
             menu=self._build_menu(),
         )
         threading.Thread(target=self._loop, daemon=True).start()

@@ -68,6 +68,7 @@ def _cmd_run(args) -> int:
         server=server,
         config_path=str(Path(args.config).expanduser()),
         default_view=config.view_mode,
+        app_config=config,
     )
     print("[token-counter] tray started; click the icon for the dashboard.")
     app.run()
@@ -120,6 +121,21 @@ def _cmd_status(args) -> int:
     config, ledger, store = _load(args.config)
     engine = Engine(config, ledger, store)
     print(detail_text(engine.snapshot()))
+    return 0
+
+
+def _cmd_export(args) -> int:
+    from datetime import datetime, timedelta, timezone
+
+    from .reporting import export_usage
+
+    config, ledger, store = _load(args.config)
+    start = datetime.now(timezone.utc) - timedelta(days=max(1, args.days))
+    names = [p.name for p in config.providers]
+    text = export_usage(ledger, names, start, args.format)
+    out = Path(args.output).expanduser()
+    out.write_text(text, encoding="utf-8")
+    print(f"[token-counter] exported {args.format.upper()} usage to {out}")
     return 0
 
 
@@ -228,6 +244,12 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--cache-creation", type=int, default=0)
     rec.set_defaults(func=_cmd_record)
 
+    exp = sub.add_parser("export", help="export recorded usage to CSV/JSON")
+    exp.add_argument("--format", choices=["csv", "json"], default="json")
+    exp.add_argument("-o", "--output", required=True, help="output file path")
+    exp.add_argument("--days", type=int, default=30, help="how many days back to include")
+    exp.set_defaults(func=_cmd_export)
+
     return parser
 
 
@@ -262,6 +284,14 @@ def main(argv: list[str] | None = None) -> int:
         ensure_config(args.config)
         if created:
             print(f"[token-counter] created a default config at {args.config}")
+        # Pick the colour palette BEFORE any GUI module imports the constants, so
+        # each window/login/popup process opens in the configured theme.
+        try:
+            from . import theme
+
+            theme.set_palette(theme.resolve_theme(load_config(args.config).theme))
+        except Exception:
+            pass
 
     try:
         return args.func(args)

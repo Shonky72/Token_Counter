@@ -62,6 +62,37 @@ def test_accent_for_keyword_and_override():
     assert accent_for("claude", "#000000") == "#000000"
 
 
+def test_display_strings_used_and_remaining():
+    from token_counter.viewmodel import display_strings
+
+    g = Gauge("tokens/min", used=847_000, limit=2_000_000, unit="tokens")
+    assert display_strings(g, "amount", "used") == ("847K / 2.0M tokens", "42%")
+    assert display_strings(g, "percent", "used") == ("42%", "847K / 2.0M tokens")
+    assert display_strings(g, "amount", "remaining") == ("1.2M left", "58%")
+    assert display_strings(g, "percent", "remaining") == ("58%", "1.2M left")
+
+
+def test_display_strings_no_limit():
+    from token_counter.viewmodel import display_strings
+
+    g = Gauge("tokens/min", used=500, limit=None, unit="tokens")
+    primary, opposite = display_strings(g, "amount", "used")
+    assert primary == "500 / ∞ tokens" and opposite == "—"
+
+
+def test_build_card_hover_is_opposite():
+    status = ProviderStatus(
+        provider="claude",
+        gauges=[Gauge("tokens/min", used=847_000, limit=2_000_000, unit="tokens")],
+    )
+    vm = build_card(status)  # defaults: amount + used
+    assert vm.primary_text == "847K / 2.0M tokens"
+    assert vm.hover_text == "42%"
+    vm2 = build_card(status, metric="percent", basis="remaining")
+    assert vm2.primary_text == "58%" and vm2.hover_text == "1.2M left"
+    assert vm2.percent == 58
+
+
 def _cfg(opts):
     raw = {"providers": [dict({"name": "claude", "type": "rate_limit"}, **opts)]}
     return parse_config(raw).providers[0]

@@ -33,6 +33,21 @@ def test_ledger_provider_used_and_remaining(tmp_path):
     assert round(total_gauge.percent) == 70
 
 
+def test_snapshot_one(tmp_path):
+    engine, ledger = _engine(
+        tmp_path,
+        {"providers": [
+            {"name": "claude", "type": "local_ledger",
+             "budget": {"period": "total", "limit": 1000}},
+        ]},
+    )
+    ledger.record("claude", "opus", input_tokens=400)
+    status = engine.snapshot_one("claude")
+    assert status.provider == "claude" and status.gauges[0].used == 400
+    missing = engine.snapshot_one("nope")
+    assert missing.error == "unknown provider"
+
+
 def test_rate_limit_provider_reads_enforced_limits(tmp_path):
     engine, ledger = _engine(
         tmp_path,

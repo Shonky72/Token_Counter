@@ -65,29 +65,36 @@ def tooltip_text(statuses: list[ProviderStatus]) -> str:
     return "\n".join(lines)
 
 
-def _tray_part(s: ProviderStatus, mode: str) -> str:
+def _tray_part(s: ProviderStatus, mode: str, basis: str = "used") -> str:
     """One provider's hover line. ``mode``: 'amounts' | 'percent'."""
     if s.error:
         return f"{s.provider}: no data"
     g = _primary_gauge(s)
     if g is None:
         return f"{s.provider}: —"
+    remaining_mode = basis == "remaining" and g.limit is not None
     if mode == "percent" and g.percent is not None:
-        return f"{s.provider}: {g.percent:.0f}%"
+        pct = (100.0 - g.percent) if remaining_mode else g.percent
+        return f"{s.provider}: {pct:.0f}%"
+    if remaining_mode:
+        return f"{s.provider}: {human(g.remaining or 0)} left"
     if g.limit is not None:
         return f"{s.provider}: {human(g.used)}/{human(g.limit)}"
     return f"{s.provider}: {human(g.used)}"
 
 
-def tray_title(statuses: list[ProviderStatus], app_name: str = "tokn", limit: int = 120) -> str:
+def tray_title(statuses: list[ProviderStatus], app_name: str = "tokn", limit: int = 120,
+               metric: str = "amount", basis: str = "used") -> str:
     """Tray-icon hover title showing per-provider amounts (e.g. ``claude: 28K/40K``).
 
-    Hard-capped for the Windows 128-char szTip limit with a tiered fallback so it
-    never trips ``Shell_NotifyIcon`` (which made the icon vanish): full amounts →
-    percent-only → truncate.
+    Honours the display options (used/remaining, amount/percent). Hard-capped for
+    the Windows 128-char szTip limit with a tiered fallback so it never trips
+    ``Shell_NotifyIcon`` (which made the icon vanish): preferred → other → truncate.
     """
-    for mode in ("amounts", "percent"):
-        parts = [_tray_part(s, mode) for s in statuses]
+    primary = "percent" if metric == "percent" else "amounts"
+    other = "amounts" if primary == "percent" else "percent"
+    for mode in (primary, other):
+        parts = [_tray_part(s, mode, basis) for s in statuses]
         text = app_name + ("\n" + "\n".join(parts) if parts else "")
         if len(text) <= limit:
             return text
