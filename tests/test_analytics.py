@@ -48,3 +48,20 @@ def test_spark_points_flat_is_midline():
 
 def test_spark_points_too_few():
     assert analytics.spark_points([1], 10, 10) == []
+
+
+def test_runout_handles_negative_remaining():
+    # Over-limit (negative remaining) must not produce a bogus run-out estimate.
+    assert analytics.runout_seconds(-200, 3600) is None
+    assert analytics.runout_seconds(0, 3600) is None
+    assert analytics.runout_text(-200, 3600) == ""
+
+
+def test_cumulative_series_is_monotonic_through_resets():
+    base = 0.0
+    samples = [(base + 0, 0), (base + 1, 500), (base + 2, 1000),
+               (base + 3, 0), (base + 4, 300)]  # window reset at index 3
+    series = analytics.cumulative_series(samples)
+    assert series == sorted(series)            # never decreases
+    assert series[-1] == 1300                  # 1000 gained + 300 after reset
+

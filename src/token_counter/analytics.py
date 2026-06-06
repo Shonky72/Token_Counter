@@ -30,9 +30,27 @@ def burn_rate_per_hour(samples: list[Sample]) -> float:
     return gained / (span / 3600.0)
 
 
+def cumulative_series(samples: list[Sample]) -> list[float]:
+    """Running total of *consumed* tokens (sum of positive deltas) across samples.
+
+    Rate-limit ``used`` resets to ~0 every window, so the raw series is a sawtooth;
+    this turns it into a monotonic 24h trend suitable for a sparkline.
+    """
+    pts = sorted((t, u) for t, u in samples if u is not None)
+    out: list[float] = []
+    total = 0.0
+    prev = None
+    for _t, u in pts:
+        if prev is not None and u > prev:
+            total += u - prev
+        prev = u
+        out.append(total)
+    return out
+
+
 def runout_seconds(remaining: int | None, rate_per_hour: float) -> float | None:
     """Seconds until ``remaining`` tokens are exhausted at ``rate_per_hour``."""
-    if remaining is None or rate_per_hour <= 0:
+    if remaining is None or remaining <= 0 or rate_per_hour <= 0:
         return None
     return remaining / rate_per_hour * 3600.0
 

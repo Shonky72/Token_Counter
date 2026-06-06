@@ -269,7 +269,7 @@ class Dashboard:
                 continue
             c["accent"] = vm.accent
             c["hover_text"] = vm.hover_text
-            c["remaining"] = (vm.limit - vm.used) if vm.limit is not None else None
+            c["remaining"] = max(vm.limit - vm.used, 0) if vm.limit is not None else None
             c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
             c["reset_var"].set(vm.reset_text or "")
             self._update_extras(c)
@@ -278,7 +278,9 @@ class Dashboard:
                 c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
                 continue
             if vm.primary_text != c.get("primary_text") or vm.percent != c.get("ring_pct"):
-                c["flap"].set_static(vm.primary_text)
+                # Don't yank the number out from under the cursor mid-hover.
+                shown = vm.hover_text if c.get("_hovering") and vm.hover_text else vm.primary_text
+                c["flap"].set_static(shown)
                 self._register_ease(c, c.get("ring_pct"), vm.percent, vm.accent)
                 c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
 
@@ -332,7 +334,7 @@ class Dashboard:
              "provider": vm.provider, "primary_text": vm.primary_text,
              "hover_text": vm.hover_text, "ring_pct": vm.percent,
              "usage_url": vm.usage_url,
-             "remaining": (vm.limit - vm.used) if vm.limit is not None else None}
+             "remaining": max(vm.limit - vm.used, 0) if vm.limit is not None else None}
 
         row = tk.Frame(inner, bg=CARD)
         row.pack(fill="x", pady=(8, 0))
@@ -481,10 +483,12 @@ class Dashboard:
         flap_w = c["flap"].widget()
 
         def num_enter(_):
+            c["_hovering"] = True
             if c["provider"] not in self._animators and c.get("hover_text"):
                 c["flap"].set_static(c["hover_text"])
 
         def num_leave(_):
+            c["_hovering"] = False
             if c["provider"] not in self._animators:
                 c["flap"].set_static(c["primary_text"])
 
@@ -550,7 +554,7 @@ class Dashboard:
             return
         c["accent"], c["primary_text"], c["hover_text"] = vm.accent, vm.primary_text, vm.hover_text
         c["ring_pct"] = vm.percent
-        c["remaining"] = (vm.limit - vm.used) if vm.limit is not None else None
+        c["remaining"] = max(vm.limit - vm.used, 0) if vm.limit is not None else None
         c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
         c["reset_var"].set(vm.reset_text or "")
         self._animators[prov] = {
@@ -571,7 +575,8 @@ class Dashboard:
             now = datetime.now(timezone.utc)
             samples = self.engine.ledger.samples_since(prov, now - timedelta(hours=24))
             if c.get("spark") is not None:
-                self._draw_spark(c["spark"], [u for _, u in samples], c["accent"])
+                # Plot cumulative consumption (a 24h trend), not the raw sawtooth.
+                self._draw_spark(c["spark"], analytics.cumulative_series(samples), c["accent"])
             rate = analytics.burn_rate_per_hour(samples)
             if rate > 0:
                 parts.append(analytics.human_rate(rate))
@@ -774,8 +779,9 @@ class SettingsDialog:
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 0))
         self.threshold_var = tk.IntVar(value=self.cfg.alert_threshold)
         scale = tk.Scale(f, from_=50, to=100, orient="horizontal", variable=self.threshold_var,
-                         bg=BG, fg=TEXT, highlightthickness=0, troughcolor=CARD,
-                         command=lambda v: self._on_threshold())
+                         bg=BG, fg=TEXT, highlightthickness=0, troughcolor=CARD)
+        # Persist once on release, not on every pixel of the drag.
+        scale.bind("<ButtonRelease-1>", lambda e: self._on_threshold())
         scale.pack(fill="x")
         tk.Label(f, text="The tray icon also tints amber/red as usage rises.",
                  bg=BG, fg=SUBTEXT, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
@@ -1003,8 +1009,18 @@ class CompactPopup:
 
     def _attach_row_hover(self, flap, row):
         w = flap.widget()
-        w.bind("<Enter>", lambda e: row.get("hover_text") and flap.set_static(row["hover_text"]), add="+")
-        w.bind("<Leave>", lambda e: flap.set_static(row["text"]), add="+")
+
+        def enter(_):
+            row["_hovering"] = True
+            if row.get("hover_text"):
+                flap.set_static(row["hover_text"])
+
+        def leave(_):
+            row["_hovering"] = False
+            flap.set_static(row["text"])
+
+        w.bind("<Enter>", enter, add="+")
+        w.bind("<Leave>", leave, add="+")
 
     def _refresh(self):
         rows: list[CompactVM] = build_compact(
@@ -1019,7 +1035,8 @@ class CompactPopup:
                 if row is None or vm.provider in self._animators:
                     continue
                 if vm.primary_text != row["text"]:
-                    row["flap"].set_static(vm.primary_text)
+                    shown = vm.hover_text if row.get("_hovering") and vm.hover_text else vm.primary_text
+                    row["flap"].set_static(shown)
                     row["text"] = vm.primary_text
                 row["hover_text"] = vm.hover_text
                 row["pct"] = vm.percent
@@ -1074,6 +1091,8 @@ class CompactPopup:
         if saved:  # remembered position (and size) from last time
             try:
                 self.root.geometry(saved)
+                self.root.update_idletasks()
+                self._clamp_on_screen()  # never restore off-screen (would be unclosable when pinned)
                 if not self._pinned:
                     self.root.focus_force()
                 return
@@ -1083,6 +1102,15 @@ class CompactPopup:
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         self.root.geometry(f"+{sw - w - 20}+{sh - h - 60}")
         self.root.focus_force()
+
+    def _clamp_on_screen(self):
+        """Keep the borderless popup fully on-screen so its ✕ is always reachable."""
+        self.root.update_idletasks()
+        w, h = self.root.winfo_width(), self.root.winfo_height()
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        x = min(max(self.root.winfo_x(), 0), max(0, sw - w))
+        y = min(max(self.root.winfo_y(), 0), max(0, sh - h))
+        self.root.geometry(f"+{x}+{y}")
 
     def run(self):
         self.root.mainloop()

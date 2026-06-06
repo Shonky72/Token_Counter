@@ -184,7 +184,25 @@ class TrayApp:
         self._icon.icon = _make_icon_image(overall_percent(statuses), self.alert_threshold)
         self._icon.menu = self._build_menu()
 
+    def _reload_settings(self) -> None:
+        """Pick up display/alert changes made in the Settings window (another
+        process writes the config) so the tray stays in sync without a restart."""
+        if not self.config_path:
+            return
+        try:
+            from .config import load_config
+
+            cfg = load_config(self.config_path)
+            self.alerts_enabled = cfg.alerts_enabled
+            self.alert_threshold = cfg.alert_threshold
+            self.token_basis = cfg.token_basis
+            self.display_metric = cfg.display_metric
+            self.theme = cfg.theme
+        except Exception:  # pragma: no cover - keep the tray alive
+            pass
+
     def refresh(self) -> None:
+        self._reload_settings()
         now = datetime.now(timezone.utc)
         statuses = self.engine.snapshot(now)
         self._record_samples(statuses, now)
