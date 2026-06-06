@@ -41,7 +41,8 @@ class CardVM:
     reset_text: str | None = None
     detail: str | None = None
     error: str | None = None
-    provider: str = ""          # raw provider name (for logo lookup)
+    provider: str = ""          # unique instance name
+    service: str = ""           # catalog service id (for logo/accent)
     scheme: str | None = None   # e.g. "anthropic" (helps pick the logo)
     used: int = 0               # primary gauge values (for the count-up animation)
     limit: int | None = None
@@ -65,19 +66,17 @@ def ease_out_frames(start: int, target: int, steps: int = 18) -> list[int]:
 def reel_frames(target: int, spin: int = 14, settle: int = 12, seed: int | None = None) -> list[int]:
     """Slot-machine reel: ``spin`` fast random values, then ease into ``target``.
 
-    Deterministic length (``spin + settle``); last frame is exactly ``target``.
-    The random spin values sit in the target's magnitude so the digits look like
-    they're rolling. Pass ``seed`` for reproducible tests.
+    Always includes a spin phase — even when ``target == 0`` (so the reel is
+    visible on every reveal). Deterministic length (``spin + settle``); the last
+    frame is exactly ``target``. Pass ``seed`` for reproducible tests.
     """
     import random
 
     rng = random.Random(seed)
-    if target <= 0:
-        return ease_out_frames(0, target, settle)
-    hi = max(target, 10)
+    hi = max(target, 100)          # roll through a believable range even at 0
     lo = max(0, target // 3)
     frames = [rng.randint(lo, hi) for _ in range(spin)]
-    frames += ease_out_frames(frames[-1] if frames else 0, target, settle)
+    frames += ease_out_frames(frames[-1] if frames else hi, target, settle)
     frames[-1] = target
     return frames
 
@@ -89,6 +88,7 @@ class CompactVM:
     percent: int | None
     primary_text: str
     provider: str = ""
+    service: str = ""
     scheme: str | None = None
 
 
@@ -154,7 +154,8 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
     style = (cfg.option("display", "ring") if cfg else "ring")
     color_override = cfg.option("color") if cfg else None
     preferred = cfg.option("primary") if cfg else None
-    accent = accent_for(status.provider, color_override)
+    service = (cfg.option("service") if cfg else None) or status.provider
+    accent = accent_for(service, color_override)
     title = (cfg.option("display_name") if cfg else None) or status.provider
     scheme = cfg.option("scheme") if cfg else None
 
@@ -162,14 +163,14 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
         return CardVM(
             title=title, accent=accent, style=style, percent=None,
             primary_text="—", error=status.error, detail=status.detail,
-            provider=status.provider, scheme=scheme,
+            provider=status.provider, service=service, scheme=scheme,
         )
 
     primary = _primary_gauge(status, preferred)
     if primary is None:
         return CardVM(title=title, accent=accent, style=style, percent=None,
                       primary_text="no data", detail=status.detail,
-                      provider=status.provider, scheme=scheme)
+                      provider=status.provider, service=service, scheme=scheme)
 
     percent = round(primary.percent) if primary.percent is not None else None
     primary_text = format_count(primary.used, primary.limit, primary.unit)
@@ -189,7 +190,7 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None) -> Car
         title=title, accent=accent, style=style, percent=percent,
         primary_text=primary_text, sub_lines=sub_lines,
         reset_text=reset_text, detail=status.detail,
-        provider=status.provider, scheme=scheme,
+        provider=status.provider, service=service, scheme=scheme,
         used=primary.used, limit=primary.limit, unit=primary.unit,
     )
 
@@ -198,7 +199,24 @@ def build_cards(
     statuses: list[ProviderStatus], configs: list[ProviderConfig] | None = None
 ) -> list[CardVM]:
     by_name = {c.name: c for c in (configs or [])}
-    return [build_card(s, by_name.get(s.provider)) for s in statuses]
+    cards = [build_card(s, by_name.get(s.provider)) for s in statuses]
+    return _group_cards(cards)
+
+
+def _group_cards(cards: list[CardVM]) -> list[CardVM]:
+    """Keep instances of the same service adjacent (first-appearance order)."""
+    order: list[str] = []
+    groups: dict[str, list[CardVM]] = {}
+    for c in cards:
+        key = c.service or c.provider
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(c)
+    out: list[CardVM] = []
+    for key in order:
+        out.extend(groups[key])
+    return out
 
 
 def build_compact(
@@ -208,6 +226,6 @@ def build_compact(
     return [
         CompactVM(title=c.title, accent=c.accent, percent=c.percent,
                   primary_text=(c.error or c.primary_text),
-                  provider=c.provider, scheme=c.scheme)
+                  provider=c.provider, service=c.service, scheme=c.scheme)
         for c in cards
     ]

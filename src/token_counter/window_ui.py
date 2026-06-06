@@ -30,13 +30,8 @@ from .viewmodel import (
     reel_frames,
 )
 
-# Dark theme palette (matches the mockup).
-BG = "#1b1b1d"
-CARD = "#262629"
-CARD_BORDER = "#333338"
-TEXT = "#ececed"
-SUBTEXT = "#9a9aa2"
-TRACK = "#3a3a40"
+# Shared dark palette (see theme.py) so the dashboard + login match.
+from .theme import BG, CARD, CARD_BORDER, SUBTEXT, TEXT, TRACK, mix
 
 
 def _engine_for(config: AppConfig) -> Engine:
@@ -192,8 +187,10 @@ class Dashboard:
         if [vm.provider for vm in vms] != getattr(self, "_card_keys", None):
             self._build_cards()
             return
+        # Periodic refresh: update numbers quietly (no reel — that only plays
+        # when the view first opens, so it never spins constantly).
         for vm in vms:
-            self._apply_card(vm, animate=True)
+            self._apply_card(vm, reveal=False)
 
     def _update_resets(self):
         if not self._cards:
@@ -209,22 +206,28 @@ class Dashboard:
         card = tk.Frame(self.body, bg=CARD, highlightbackground=CARD_BORDER,
                         highlightthickness=1)
         card.pack(fill="x", pady=6)
+        # Accent left strip for a touch of colour.
+        tk.Frame(card, bg=vm.accent, width=3).pack(side="left", fill="y")
         inner = tk.Frame(card, bg=CARD)
-        inner.pack(fill="x", padx=12, pady=10)
+        inner.pack(side="left", fill="x", expand=True, padx=12, pady=10)
 
         head = tk.Frame(inner, bg=CARD)
         head.pack(fill="x")
-        logo = _logo_photo(vm.provider or vm.title, vm.scheme, 22, self._photos)
+        logo = _logo_photo(vm.service or vm.provider or vm.title, vm.scheme, 22,
+                           self._photos)
         tk.Label(head, image=logo, bg=CARD).pack(side="left")
         tk.Label(head, text=vm.title.upper(), bg=CARD, fg=TEXT,
                  font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
+        # Gentle "live" pulse dot.
+        pulse = tk.Canvas(head, width=12, height=12, bg=CARD, highlightthickness=0)
+        pulse.pack(side="right")
 
         num_var = tk.StringVar()
         reset_var = tk.StringVar(value=vm.reset_text or "")
         sub_var = tk.StringVar(value="\n".join(vm.sub_lines))
         c = {"style": vm.style, "num_var": num_var, "reset_var": reset_var,
              "sub_var": sub_var, "limit": vm.limit, "unit": vm.unit, "used": 0,
-             "accent": vm.accent, "anim": None}
+             "accent": vm.accent, "anim": None, "pulse": pulse, "card": card}
 
         row = tk.Frame(inner, bg=CARD)
         row.pack(fill="x", pady=(8, 0))
@@ -255,56 +258,126 @@ class Dashboard:
                      font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
 
         self._cards[vm.provider] = c
-        # Initial paint with a count-up from zero for flair.
-        self._draw_gauge(c, vm.percent, vm.accent)
-        self._apply_card(vm, animate=True)
+        self._attach_hover(card, vm.accent)
+        # First reveal: play the reel + ease the gauge from zero (once, on open).
+        self._draw_gauge(c, 0, vm.accent)
+        self._apply_card(vm, reveal=True)
+        self._ensure_pulse()
+
+    # --- hover highlight ----------------------------------------------
+    def _attach_hover(self, card, accent):
+        state = {"n": 0}
+
+        def enter(_):
+            state["n"] += 1
+            try:
+                card.configure(highlightbackground=accent)
+            except Exception:
+                pass
+
+        def leave(_):
+            state["n"] -= 1
+            if state["n"] <= 0:
+                state["n"] = 0
+                try:
+                    card.configure(highlightbackground=CARD_BORDER)
+                except Exception:
+                    pass
+
+        def walk(w):
+            w.bind("<Enter>", enter, add="+")
+            w.bind("<Leave>", leave, add="+")
+            for child in w.winfo_children():
+                walk(child)
+
+        walk(card)
+
+    # --- live pulse ----------------------------------------------------
+    def _ensure_pulse(self):
+        if getattr(self, "_pulse_running", False):
+            return
+        self._pulse_running = True
+        self._pulse_phase = 0.0
+        self._pulse_tick()
+
+    def _pulse_tick(self):
+        import math
+
+        self._pulse_phase = (self._pulse_phase + 0.18) % (2 * math.pi)
+        level = 0.5 + 0.5 * math.sin(self._pulse_phase)  # 0..1
+        for c in self._cards.values():
+            canvas = c.get("pulse")
+            if canvas is None:
+                continue
+            try:
+                canvas.delete("all")
+                r = 2.5 + 1.6 * level
+                col = mix(CARD, c.get("accent", "#5a78c8"), 0.35 + 0.65 * level)
+                canvas.create_oval(6 - r, 6 - r, 6 + r, 6 + r, fill=col, outline="")
+            except Exception:
+                pass
+        try:
+            self.root.after(90, self._pulse_tick)
+        except Exception:
+            self._pulse_running = False
 
     def _draw_gauge(self, c, percent, accent):
         canvas = c.get("canvas")
         if canvas is None:
             return
+        p = None if percent is None else int(round(percent))
         canvas.delete("all")
         if c["style"] == "bar":
             canvas.update_idletasks()
             w = max(canvas.winfo_width(), 360)
-            _draw_bar(canvas, 0, 0, w, 8, percent or 0, accent)
+            _draw_bar(canvas, 0, 0, w, 8, p or 0, accent)
         else:
-            _draw_ring(canvas, 4, 4, 64, percent, accent)
+            _draw_ring(canvas, 4, 4, 64, p, accent)
 
-    def _apply_card(self, vm: CardVM, animate: bool):
+    def _apply_card(self, vm: CardVM, reveal: bool):
         c = self._cards.get(vm.provider)
         if c is None:
             return
         c["limit"], c["unit"], c["accent"] = vm.limit, vm.unit, vm.accent
         c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
         c["reset_var"].set(vm.reset_text or "")
-        self._draw_gauge(c, vm.percent, vm.accent)
-        if vm.error:
-            c["num_var"].set("—")
-            c["used"] = 0
-            return
-        self._animate_number(c, c["used"], vm.used) if animate else c["num_var"].set(
-            format_count(vm.used, vm.limit, vm.unit)
-        )
-        c["used"] = vm.used
+        target = 0 if vm.error else vm.used
+        target_pct = 0 if (vm.error or vm.percent is None) else vm.percent
+        final_text = "—" if vm.error else None
+        ring_pct = None if vm.error else vm.percent
+        if reveal:
+            self._animate_reveal(c, target, target_pct, ring_pct, final_text)
+        else:
+            self._cancel_anim(c)
+            c["num_var"].set(final_text or format_count(target, vm.limit, vm.unit))
+            self._draw_gauge(c, ring_pct, vm.accent)
+        c["used"] = target
 
-    def _animate_number(self, c, start, target):
-        # Slot-machine reel: spin fast, then settle on the value.
+    def _cancel_anim(self, c):
         if c.get("anim") is not None:
             try:
                 self.root.after_cancel(c["anim"])
             except Exception:
                 pass
             c["anim"] = None
+
+    def _animate_reveal(self, c, target, target_pct, ring_pct, final_text):
+        # Slot-machine reel for the number + an eased gauge fill, played once.
+        self._cancel_anim(c)
         frames = reel_frames(target)
+        n = len(frames)
 
         def step(i=0):
             c["num_var"].set(format_count(frames[i], c["limit"], c["unit"]))
-            if i + 1 < len(frames):
-                # Faster during the spin, easing out as it settles.
+            frac = (i + 1) / n
+            self._draw_gauge(c, (target_pct or 0) * frac, c["accent"])
+            if i + 1 < n:
                 delay = 35 if i < 14 else 55
                 c["anim"] = self.root.after(delay, lambda: step(i + 1))
             else:
+                if final_text is not None:
+                    c["num_var"].set(final_text)
+                self._draw_gauge(c, ring_pct, c["accent"])
                 c["anim"] = None
 
         step(0)
@@ -438,7 +511,8 @@ class CompactPopup:
         for vm in rows:
             r = tk.Frame(self.frame, bg=CARD)
             r.pack(fill="x", pady=3)
-            logo = _logo_photo(vm.provider or vm.title, vm.scheme, 18, self._photos)
+            logo = _logo_photo(vm.service or vm.provider or vm.title, vm.scheme, 18,
+                               self._photos)
             tk.Label(r, image=logo, bg=CARD).pack(side="left")
             tk.Label(r, text=vm.title, bg=CARD, fg=TEXT,
                      font=("Segoe UI", 10, "bold")).pack(side="left", padx=6)

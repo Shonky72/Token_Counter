@@ -33,8 +33,13 @@ def test_reel_frames_ends_on_target():
     assert frames[:14] != sorted(frames[:14])
 
 
-def test_reel_frames_zero_target():
-    assert reel_frames(0)[-1] == 0
+def test_reel_frames_zero_target_still_spins():
+    # Even at 0 the reel must visibly spin (so the reveal is never a no-op),
+    # then land exactly on 0.
+    frames = reel_frames(0, spin=14, settle=12, seed=1)
+    assert frames[-1] == 0
+    assert len(frames) == 26
+    assert max(frames) > 0  # it rolled through non-zero values
 
 
 def test_format_duration():
@@ -106,3 +111,24 @@ def test_build_compact_uses_titles_and_accents():
     [vm] = build_compact(statuses, cfg.providers)
     assert vm.title == "ChatGPT"
     assert vm.accent == "#10a37f"
+
+
+def test_build_cards_groups_instances_and_uses_service_accent():
+    statuses = [
+        ProviderStatus(provider="claude", gauges=[Gauge("requests/min", 1, 100)]),
+        ProviderStatus(provider="gemini", gauges=[Gauge("tokens/min", 1, 100)]),
+        ProviderStatus(provider="claude-2", gauges=[Gauge("requests/min", 1, 100)]),
+    ]
+    cfg = parse_config({"providers": [
+        {"name": "claude", "type": "rate_limit", "service": "claude",
+         "display_name": "Claude — Work"},
+        {"name": "gemini", "type": "rate_limit", "service": "gemini"},
+        {"name": "claude-2", "type": "rate_limit", "service": "claude",
+         "display_name": "Claude — Home"},
+    ]})
+    cards = build_cards(statuses, cfg.providers)
+    # The two Claude instances are grouped together, ahead of gemini.
+    assert [c.provider for c in cards] == ["claude", "claude-2", "gemini"]
+    # Accent + service id resolve from the catalog service, not the instance name.
+    assert cards[0].service == "claude" and cards[0].accent == "#d97757"
+    assert cards[1].service == "claude" and cards[1].accent == "#d97757"

@@ -19,10 +19,18 @@ from pathlib import Path
 
 from . import catalog
 from .auth import CredentialStore
-from .config import AppConfig, ProviderConfig, add_provider, load_config, remove_provider
+from .config import (
+    AppConfig,
+    ProviderConfig,
+    add_provider,
+    group_by_service,
+    load_config,
+    remove_provider,
+)
 from .ledger import Ledger
 from .oauth import GOOGLE_PRESET, OAuthClient
 from .providers import create_provider
+from .theme import BG, CARD, apply_ttk_dark
 
 
 def _oauth_client_from_config(pc: ProviderConfig) -> OAuthClient | None:
@@ -74,6 +82,7 @@ class LoginWindow:
             lambda: (state_mod.set("login_geometry", self.root.geometry()),
                      self.root.destroy()),
         )
+        apply_ttk_dark(self.root)  # match the dark dashboard
         self._set_icon(self.root)
 
         header = ttk.Frame(self.root, padding=(16, 14, 16, 4))
@@ -83,7 +92,7 @@ class LoginWindow:
             header,
             text=(f"Sign in to your AI services (developer API keys). "
                   f"Stored securely via: {store.backend}."),
-            foreground="#555",
+            style="Sub.TLabel",
         ).pack(anchor="w")
 
         # Add-a-service row
@@ -93,15 +102,43 @@ class LoginWindow:
         self._add_var = tk.StringVar()
         self._combo = ttk.Combobox(addbar, textvariable=self._add_var, state="readonly", width=24)
         self._combo.pack(side="left", padx=8)
-        ttk.Button(addbar, text="Add", command=self._on_add).pack(side="left")
+        ttk.Button(addbar, text="Add", style="Accent.TButton",
+                   command=self._on_add).pack(side="left")
 
         ttk.Separator(self.root, orient="horizontal").pack(fill="x", padx=16, pady=4)
 
-        # Scrollable list of added services
-        self.body = ttk.Frame(self.root, padding=(16, 4))
-        self.body.pack(fill="both", expand=True)
+        # Scrollable list of added services (Canvas + Scrollbar + inner frame).
+        container = ttk.Frame(self.root)
+        container.pack(fill="both", expand=True)
+        self._canvas = tk.Canvas(container, bg=BG, highlightthickness=0)
+        vsb = ttk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._canvas.pack(side="left", fill="both", expand=True)
+        self.body = ttk.Frame(self._canvas, padding=(16, 4))
+        self._body_win = self._canvas.create_window((0, 0), window=self.body, anchor="nw")
+        self.body.bind(
+            "<Configure>",
+            lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")),
+        )
+        self._canvas.bind(
+            "<Configure>",
+            lambda e: self._canvas.itemconfigure(self._body_win, width=e.width),
+        )
+        self._bind_mousewheel()
 
         self._render()
+
+    def _bind_mousewheel(self) -> None:
+        def on_wheel(event):
+            delta = event.delta
+            if delta == 0:
+                delta = 120 if getattr(event, "num", 5) == 4 else -120
+            self._canvas.yview_scroll(int(-delta / 120), "units")
+
+        self._canvas.bind_all("<MouseWheel>", on_wheel)
+        self._canvas.bind_all("<Button-4>", on_wheel)  # Linux scroll up
+        self._canvas.bind_all("<Button-5>", on_wheel)  # Linux scroll down
 
     # --- helpers -------------------------------------------------------
     def _set_icon(self, win) -> None:
@@ -119,9 +156,8 @@ class LoginWindow:
         self.config = load_config(self.config_path)
 
     def _refresh_combo(self) -> None:
-        added = set(self._added_names())
-        avail = [(k, catalog.SERVICES[k].display_name) for k in catalog.service_keys()
-                 if k not in added]
+        # All services are always offered — you can add several keys per provider.
+        avail = [(k, catalog.SERVICES[k].display_name) for k in catalog.service_keys()]
         self._combo_map = {name: key for key, name in avail}
         self._combo["values"] = [name for _k, name in avail]
         self._add_var.set(avail[0][1] if avail else "")
@@ -139,17 +175,19 @@ class LoginWindow:
             self.ttk.Label(
                 self.body,
                 text="No services yet — pick one above and click Add.",
-                foreground="#777",
+                style="Sub.TLabel",
             ).pack(anchor="w", pady=20)
             return
 
-        for pc in providers:
+        # Keep instances of the same service grouped together.
+        for pc in group_by_service(list(providers)):
             self._build_service_row(pc)
 
     def _build_service_row(self, pc: ProviderConfig) -> None:
         tk, ttk = self.tk, self.ttk
-        svc = catalog.get(pc.name)
-        title = (svc.display_name if svc else pc.name)
+        service_id = pc.option("service", pc.name)
+        svc = catalog.get(service_id)
+        title = pc.option("display_name") or (svc.display_name if svc else pc.name)
 
         frame = ttk.LabelFrame(self.body, text=f"  {title}  ", padding=10)
         frame.pack(fill="x", pady=6)
@@ -157,13 +195,14 @@ class LoginWindow:
         top = ttk.Frame(frame)
         top.pack(fill="x")
 
-        # Logo
+        # Logo (resolved from the catalog service id, so claude-2 shows Claude).
         try:
             from .logos import provider_logo_image
             from .window_ui import _photo
 
-            logo = _photo(provider_logo_image(pc.name, 24, pc.option("scheme")), self._photos)
-            tk.Label(top, image=logo).pack(side="left")
+            logo = _photo(provider_logo_image(service_id, 24, pc.option("scheme")),
+                          self._photos)
+            tk.Label(top, image=logo, bg=CARD).pack(side="left")
         except Exception:
             pass
 
@@ -188,13 +227,14 @@ class LoginWindow:
 
         status = tk.StringVar(value=self._initial_status(pc))
         self._status_vars[pc.name] = status
-        ttk.Label(frame, textvariable=status, foreground="#557").pack(anchor="w", pady=(6, 0))
+        ttk.Label(frame, textvariable=status, style="Sub.TLabel").pack(anchor="w", pady=(6, 0))
 
     def _show_info(self, svc: "catalog.Service") -> None:
         tk, ttk = self.tk, self.ttk
         top = tk.Toplevel(self.root)
         top.title(f"{svc.display_name} — how to add your key")
         top.geometry("460x260")
+        top.configure(bg=BG)
         self._set_icon(top)
         ttk.Label(top, text=f"{svc.display_name} API key", font=("Segoe UI", 12, "bold"),
                   padding=(14, 12, 14, 4)).pack(anchor="w")
@@ -211,9 +251,47 @@ class LoginWindow:
         key = getattr(self, "_combo_map", {}).get(name)
         if not key:
             return
-        add_provider(self.config_path, key)
+        # Ask for an optional label so multiple keys per provider are tellable
+        # apart (e.g. "Work" / "Personal").
+        label = self._ask_label(name)
+        if label is None:  # cancelled
+            return
+        add_provider(self.config_path, key, label=label or None)
         self._reload()
         self._render()
+
+    def _ask_label(self, service_name: str) -> str | None:
+        """Small dark modal for a label. Returns the text, "" for none, or None
+        if cancelled."""
+        tk, ttk = self.tk, self.ttk
+        top = tk.Toplevel(self.root)
+        top.title(f"Add {service_name}")
+        top.configure(bg=BG)
+        top.geometry("360x150")
+        top.transient(self.root)
+        self._set_icon(top)
+        result: dict[str, str | None] = {"value": None}
+
+        ttk.Label(top, text=f"Label for this {service_name} key (optional):",
+                  padding=(14, 14, 14, 4)).pack(anchor="w")
+        var = tk.StringVar()
+        entry = ttk.Entry(top, textvariable=var, width=36)
+        entry.pack(padx=14, anchor="w")
+        entry.focus_set()
+
+        btns = ttk.Frame(top, padding=14)
+        btns.pack(side="bottom", fill="x")
+
+        def ok(_=None):
+            result["value"] = var.get().strip()
+            top.destroy()
+
+        ttk.Button(btns, text="Add", style="Accent.TButton", command=ok).pack(side="left")
+        ttk.Button(btns, text="Cancel", command=top.destroy).pack(side="right")
+        top.bind("<Return>", ok)
+        top.grab_set()
+        self.root.wait_window(top)
+        return result["value"]
 
     def _initial_status(self, pc: ProviderConfig) -> str:
         if self.store.get(pc.name, "api_key"):
