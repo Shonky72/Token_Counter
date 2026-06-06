@@ -123,10 +123,10 @@ class TrayApp:
     def _spawn(self, command: str) -> None:
         # Launch a Tkinter window in its own process so it owns the main thread
         # (Tk and pystray can't share one). Frozen-exe aware.
-        from .relaunch import subprocess_args
+        from .relaunch import popen_kwargs, subprocess_args
 
         try:
-            subprocess.Popen(subprocess_args(command, self.config_path))
+            subprocess.Popen(subprocess_args(command, self.config_path), **popen_kwargs())
         except Exception as exc:  # pragma: no cover
             print(f"[token-counter] could not open {command} window: {exc}")
 

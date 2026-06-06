@@ -22,6 +22,22 @@ FLAP_ALPHABET = " 0123456789.,/%:-KMB" + string.ascii_uppercase + string.ascii_l
 _INDEX = {ch: i for i, ch in enumerate(FLAP_ALPHABET)}
 _N = len(FLAP_ALPHABET)
 
+_DIGITS = "0123456789"
+_UPPER = string.ascii_uppercase
+_LOWER = string.ascii_lowercase
+
+
+def _roll_set(ch: str) -> str | None:
+    """The contiguous sequence a tile rolls through (odometer-style), or None for
+    symbols/space, which stay static so separators and labels don't jitter."""
+    if ch in _DIGITS:
+        return _DIGITS
+    if ch in _UPPER:
+        return _UPPER
+    if ch in _LOWER:
+        return _LOWER
+    return None
+
 
 def settle_fraction(position: int, count: int) -> float:
     """Progress (0..1) at which tile ``position`` locks onto its target glyph.
@@ -36,21 +52,27 @@ def settle_fraction(position: int, count: int) -> float:
 def flap_glyph(target_char: str, position: int, progress: float, count: int = 1) -> str:
     """The glyph tile ``position`` should show at overall ``progress`` (0..1).
 
-    Before the tile's settle point it rolls backward through the alphabet so it
-    lands *exactly* on ``target_char`` at the settle point (a flap "counting up").
-    At/after settle — and at ``progress >= 1`` — it shows the target. Glyphs not
-    in the alphabet are shown statically.
+    Each tile *rolls* forward through its own set (digits 0–9, A–Z, a–z) like a
+    clock/odometer and lands *exactly* on ``target_char`` at the tile's settle
+    point. Symbols, spaces and the unit label stay static. At/after settle — and
+    at ``progress >= 1`` — it shows the target.
     """
-    if progress >= 1.0 or target_char not in _INDEX:
+    if progress >= 1.0:
+        return target_char
+    seq = _roll_set(target_char)
+    if seq is None:                       # symbol / space → no roll
         return target_char
     settle = settle_fraction(position, count)
     if progress >= settle:
         return target_char
-    local = progress / settle if settle > 0 else 1.0      # 0..1 within the flap
-    target_idx = _INDEX[target_char]
-    flips = 9 + (position % 5)                              # vary speed per tile
-    idx = (target_idx - round((1.0 - local) * flips)) % _N
-    return FLAP_ALPHABET[idx]
+    local = progress / settle if settle > 0 else 1.0      # 0..1 within the roll
+    total = len(seq)
+    target_pos = seq.index(target_char)
+    flips = 14 + (position % 4)                            # how far it rolls
+    # Roll forward: as local→1 the remaining steps reach 0 and we hit the target.
+    steps_remaining = round((1.0 - local) * flips)
+    idx = (target_pos - steps_remaining) % total
+    return seq[idx]
 
 
 def flap_string(target: str, progress: float) -> str:

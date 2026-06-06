@@ -35,8 +35,8 @@ from .viewmodel import (
 from .theme import BG, CARD, CARD_BORDER, SUBTEXT, TEXT, TRACK, lighten, mix
 
 # Animation timing (the reveal "flap" must run ≥3s and cascade down the list).
-REVEAL_DUR = 3.2      # seconds the split-flap reveal runs per card
-STAGGER = 0.30        # seconds between successive cards starting (one-by-one)
+REVEAL_DUR = 2.0      # seconds the split-flap reveal runs per card
+STAGGER = 0.22        # seconds between successive cards starting (one-by-one)
 EASE_DUR = 0.5        # seconds for a quiet value-change gauge ease
 FRAME_MS = 16         # ~60fps master animation clock
 
@@ -482,10 +482,10 @@ class Dashboard:
     def _open_login(self):
         import subprocess
 
-        from .relaunch import subprocess_args
+        from .relaunch import popen_kwargs, subprocess_args
 
         try:
-            subprocess.Popen(subprocess_args("login", self.config_path))
+            subprocess.Popen(subprocess_args("login", self.config_path), **popen_kwargs())
         except Exception as exc:  # pragma: no cover
             print(f"[token-counter] could not open login: {exc}")
 
