@@ -81,6 +81,12 @@ def flap_string(target: str, progress: float) -> str:
     return "".join(flap_glyph(ch, i, progress, n) for i, ch in enumerate(target))
 
 
+def layout_offset(text_len: int, reserve: int) -> int:
+    """Number of leading blank tile-slots to centre ``text_len`` tiles within a
+    reserved width of ``reserve`` slots (never negative)."""
+    return max(0, (reserve - text_len) // 2)
+
+
 class FlapDisplay:
     """A Canvas that paints a string as split-flap tiles. Timer-free."""
 
@@ -94,6 +100,7 @@ class FlapDisplay:
         self.fg = fg
         self.font = font
         self.max_chars = max_chars
+        self._reserve = 0          # fixed width (in tiles) so swaps don't resize
         self._target = ""
         self._accent = fg
         self.canvas = tk.Canvas(parent, bg=bg, highlightthickness=0,
@@ -102,22 +109,29 @@ class FlapDisplay:
     def widget(self):
         return self.canvas
 
+    def set_reserve(self, chars: int):
+        """Fix the canvas to ``chars`` tile-slots so swapping a shorter/longer
+        string (e.g. amount↔percent on hover) never resizes the widget."""
+        self._reserve = min(max(0, int(chars)), self.max_chars)
+        self._draw(self._target)
+
     def _draw(self, text: str, glow: float = 0.0):
         c = self.canvas
         text = text[: self.max_chars]
-        n = max(1, len(text))
-        width = (self.tile_w + self.gap) * n
+        slots = max(1, len(text), self._reserve)
+        width = (self.tile_w + self.gap) * slots
         if int(c["width"]) != width:
             c.configure(width=width)
         c.delete("all")
         tw, th, gap = self.tile_w, self.tile_h, self.gap
+        off = layout_offset(len(text), slots)   # centre the tiles in the reserve
         for i, ch in enumerate(text):
-            x = i * (tw + gap)
-            # Tile body + a subtle top/bottom split so it reads as a flip card.
+            x = (off + i) * (tw + gap)
+            # Tile body + a subtle two-tone top half so it reads as a flip card
+            # (no centre line — that looked like a strike-through at this size).
             c.create_rectangle(x, 0, x + tw, th, fill=self.tile_bg, outline="")
             c.create_rectangle(x, 0, x + tw, th / 2, fill=_lighten(self.tile_bg, 0.06),
                                outline="")
-            c.create_line(x, th / 2, x + tw, th / 2, fill="#000000")
             fill = self.fg if glow <= 0 else _mix(self.fg, self._accent, glow)
             c.create_text(x + tw / 2, th / 2, text=ch, fill=fill, font=self.font)
 

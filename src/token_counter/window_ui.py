@@ -273,6 +273,8 @@ class Dashboard:
             c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
             c["reset_var"].set(vm.reset_text or "")
             self._update_extras(c)
+            if not c.get("_hovering"):  # don't resize the number under the cursor
+                c["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
             if vm.provider in self._animators:
                 # A reveal/ease is still running — let it finish with fresh targets.
                 c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
@@ -375,8 +377,10 @@ class Dashboard:
             c["spark"] = spark
 
         c["flap"] = flap
-        # Reserve width with blank tiles so the cascade doesn't shift layout.
-        flap.set_static(" " * max(1, len(vm.primary_text)))
+        # Fix the width to the longer of amount/percent so the cascade doesn't
+        # shift layout and the hover swap never resizes (which caused flicker).
+        flap.set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
+        flap.set_static("")
         self._cards[vm.provider] = c
         self._attach_hover(c)
         self._attach_actions(c)
@@ -557,6 +561,8 @@ class Dashboard:
         c["remaining"] = max(vm.limit - vm.used, 0) if vm.limit is not None else None
         c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
         c["reset_var"].set(vm.reset_text or "")
+        if not c.get("_hovering"):
+            c["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
         self._animators[prov] = {
             "kind": "reveal", "c": c, "text": vm.primary_text, "tpct": vm.percent or 0,
             "ring": vm.percent, "accent": vm.accent, "start": time.monotonic(),
@@ -998,7 +1004,8 @@ class CompactPopup:
             flap = FlapDisplay(r, tk, bg=CARD, font=self._mono_font(9),
                                tile_w=9, tile_h=16, tile_bg=TILE_BG, fg=SUBTEXT)
             flap.widget().pack(side="right")
-            flap.set_static(" " * max(1, len(vm.primary_text)))
+            flap.set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
+            flap.set_static("")
             bar = tk.Canvas(self.frame, height=5, width=260, bg=CARD, highlightthickness=0)
             bar.pack(fill="x")
             row = {"flap": flap, "bar": bar, "text": vm.primary_text,
@@ -1034,6 +1041,8 @@ class CompactPopup:
                 row = self._rows.get(vm.provider)
                 if row is None or vm.provider in self._animators:
                     continue
+                if not row.get("_hovering"):
+                    row["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
                 if vm.primary_text != row["text"]:
                     shown = vm.hover_text if row.get("_hovering") and vm.hover_text else vm.primary_text
                     row["flap"].set_static(shown)
