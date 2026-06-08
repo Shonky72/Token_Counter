@@ -35,6 +35,8 @@ build_exe_options = {
         "pystray",
         "PIL",
         "yaml",
+        "webview",      # pywebview (WebView2 host for the redesigned windows)
+        "clr_loader",
     ],
     "excludes": ["pytest", "tkinter.test", "test", "unittest"],
     "include_msvcr": True,

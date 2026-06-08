@@ -1,0 +1,366 @@
+/* ============================================================
+   Material 3 (Material You) token system + component library
+   Scoped to .m3 so light & dark screens can coexist on one canvas.
+   Canonical M3 baseline palette (purple primary) + per-provider
+   dynamic-color containers. Roboto type scale.
+   ============================================================ */
+
+/* ---------- Color roles : DARK (default) ---------- */
+.m3,
+.m3[data-theme="dark"] {
+  --primary: #d0bcff;
+  --on-primary: #381e72;
+  --primary-container: #4f378b;
+  --on-primary-container: #eaddff;
+  --secondary: #ccc2dc;
+  --on-secondary: #332d41;
+  --secondary-container: #4a4458;
+  --on-secondary-container: #e8def8;
+  --tertiary: #efb8c8;
+  --on-tertiary-container: #ffd8e4;
+
+  --background: #141218;
+  --on-background: #e6e0e9;
+  --surface: #141218;
+  --surface-dim: #141218;
+  --surface-bright: #3b383e;
+  --s-lowest: #0f0d13;
+  --s-low: #1d1b20;
+  --s-container: #211f26;
+  --s-high: #2b2930;
+  --s-highest: #36343b;
+  --on-surface: #e6e0e9;
+  --on-surface-variant: #cac4d0;
+  --outline: #938f99;
+  --outline-variant: #49454f;
+
+  --error: #f2b8b5;
+  --on-error-container: #f9dedc;
+  --error-container: #8c1d18;
+
+  --green: #7adfae;
+  --amber: #ffd479;
+  --red: #ffb4ab;
+
+  --shadow: rgba(0,0,0,.55);
+  --scrim: rgba(0,0,0,.6);
+  --state-hover: rgba(230,224,233,.08);
+  --state-press: rgba(230,224,233,.12);
+
+  --tile-bg: #0c0a10;
+  --tile-fg: #f3eef9;
+  --tile-seam: rgba(255,255,255,.07);
+}
+
+/* ---------- Color roles : LIGHT ---------- */
+.m3[data-theme="light"] {
+  --primary: #65558f;
+  --on-primary: #ffffff;
+  --primary-container: #e9ddff;
+  --on-primary-container: #21005d;
+  --secondary: #625b71;
+  --on-secondary: #ffffff;
+  --secondary-container: #e8def8;
+  --on-secondary-container: #1d192b;
+  --tertiary: #7d5260;
+  --on-tertiary-container: #31111d;
+
+  --background: #fdf7ff;
+  --on-background: #1d1b20;
+  --surface: #fdf7ff;
+  --surface-dim: #ded8e0;
+  --surface-bright: #fdf7ff;
+  --s-lowest: #ffffff;
+  --s-low: #f7f2fa;
+  --s-container: #f2ecf4;
+  --s-high: #ece6ee;
+  --s-highest: #e6e0e9;
+  --on-surface: #1d1b20;
+  --on-surface-variant: #49454e;
+  --outline: #7a757f;
+  --outline-variant: #cac4cf;
+
+  --error: #ba1a1a;
+  --on-error-container: #410002;
+  --error-container: #ffdad6;
+
+  --green: #1f7a4d;
+  --amber: #8a6100;
+  --red: #ba1a1a;
+
+  --shadow: rgba(0,0,0,.16);
+  --scrim: rgba(0,0,0,.32);
+  --state-hover: rgba(29,27,32,.06);
+  --state-press: rgba(29,27,32,.10);
+
+  --tile-bg: #2a2730;
+  --tile-fg: #f6f1fb;
+  --tile-seam: rgba(0,0,0,.28);
+}
+
+/* ---------- Base ---------- */
+.m3 {
+  font-family: "Roboto", "Segoe UI", system-ui, sans-serif;
+  color: var(--on-surface);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.m3 *, .m3 *::before, .m3 *::after { box-sizing: border-box; }
+
+/* ---------- M3 type scale ---------- */
+.t-display-s { font-size: 36px; line-height: 44px; font-weight: 400; letter-spacing: 0; }
+.t-headline-m { font-size: 28px; line-height: 36px; font-weight: 400; }
+.t-headline-s { font-size: 24px; line-height: 32px; font-weight: 400; }
+.t-title-l { font-size: 22px; line-height: 28px; font-weight: 400; }
+.t-title-m { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: .15px; }
+.t-title-s { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: .1px; }
+.t-body-l { font-size: 16px; line-height: 24px; font-weight: 400; letter-spacing: .5px; }
+.t-body-m { font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: .25px; }
+.t-body-s { font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: .4px; }
+.t-label-l { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: .1px; }
+.t-label-m { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: .5px; }
+.t-label-s { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: .5px; }
+
+.txt-variant { color: var(--on-surface-variant); }
+.txt-primary { color: var(--primary); }
+
+/* ============================================================
+   Elevation (M3 tonal surfaces + shadows)
+   ============================================================ */
+.elev-0 { box-shadow: none; }
+.elev-1 { box-shadow: 0 1px 2px var(--shadow), 0 1px 3px 1px color-mix(in srgb, var(--shadow) 50%, transparent); }
+.elev-2 { box-shadow: 0 1px 2px var(--shadow), 0 2px 6px 2px color-mix(in srgb, var(--shadow) 55%, transparent); }
+.elev-3 { box-shadow: 0 4px 8px 3px color-mix(in srgb, var(--shadow) 55%, transparent), 0 1px 3px var(--shadow); }
+
+/* ============================================================
+   App bar
+   ============================================================ */
+.m3-appbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 8px 10px 16px;
+  background: var(--surface);
+  color: var(--on-surface);
+}
+.m3-appbar .title { flex: 1; }
+.m3-appbar .ver { color: var(--on-surface-variant); margin-left: 6px; }
+
+/* ============================================================
+   Cards
+   ============================================================ */
+.m3-card { border-radius: 16px; position: relative; }
+.m3-card.elevated { background: var(--s-low); }
+.m3-card.filled { background: var(--s-highest); }
+.m3-card.outlined { background: var(--surface); border: 1px solid var(--outline-variant); }
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.m3-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 24px; border-radius: 20px;
+  font-family: inherit; font-size: 14px; font-weight: 500; letter-spacing: .1px;
+  border: none; cursor: pointer; position: relative; overflow: hidden;
+  white-space: nowrap; user-select: none;
+}
+.m3-btn.has-icon { padding-left: 16px; }
+.m3-btn .mi { font-size: 18px; }
+.m3-btn.filled { background: var(--primary); color: var(--on-primary); }
+.m3-btn.tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+.m3-btn.outlined { background: transparent; color: var(--primary); border: 1px solid var(--outline); }
+.m3-btn.text { background: transparent; color: var(--primary); padding: 0 12px; }
+.m3-btn .state { position: absolute; inset: 0; background: transparent; transition: background .12s; }
+.m3-btn:hover .state { background: var(--state-hover); }
+
+.m3-icon-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+  background: transparent; color: var(--on-surface-variant);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 22px; position: relative; transition: background .12s;
+}
+.m3-icon-btn:hover { background: var(--state-hover); }
+.m3-icon-btn.filled-tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+
+/* FAB */
+.m3-fab {
+  display: inline-flex; align-items: center; gap: 12px;
+  height: 56px; padding: 0 20px; border-radius: 16px; border: none; cursor: pointer;
+  background: var(--primary-container); color: var(--on-primary-container);
+  font-family: inherit; font-size: 14px; font-weight: 600; letter-spacing: .1px;
+}
+.m3-fab .mi { font-size: 24px; }
+
+/* ============================================================
+   Chips
+   ============================================================ */
+.m3-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--outline-variant); background: transparent;
+  color: var(--on-surface-variant); font-size: 12px; font-weight: 500; letter-spacing: .3px;
+}
+.m3-chip .mi { font-size: 16px; }
+.m3-chip.assist { color: var(--on-surface); }
+.m3-chip.tonal { background: var(--secondary-container); color: var(--on-secondary-container); border-color: transparent; }
+
+/* ============================================================
+   Segmented buttons
+   ============================================================ */
+.m3-seg { display: inline-flex; border: 1px solid var(--outline); border-radius: 20px; overflow: hidden; }
+.m3-seg button {
+  appearance: none; border: none; background: transparent; cursor: pointer;
+  height: 36px; padding: 0 16px; font-family: inherit; font-size: 13px; font-weight: 500;
+  color: var(--on-surface-variant); display: inline-flex; align-items: center; gap: 6px;
+}
+.m3-seg button + button { border-left: 1px solid var(--outline); }
+.m3-seg button.sel { background: var(--secondary-container); color: var(--on-secondary-container); }
+.m3-seg button .mi { font-size: 16px; }
+
+/* ============================================================
+   Switch
+   ============================================================ */
+.m3-switch { width: 52px; height: 32px; border-radius: 16px; position: relative; cursor: pointer;
+  background: var(--surface-dim); border: 2px solid var(--outline); transition: all .18s; flex: none; }
+.m3-switch .knob { position: absolute; top: 50%; left: 6px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--outline); transform: translateY(-50%); transition: all .18s; }
+.m3-switch.on { background: var(--primary); border-color: var(--primary); }
+.m3-switch.on .knob { left: 28px; width: 24px; height: 24px; background: var(--on-primary); }
+
+/* ============================================================
+   Linear progress (M3 determinate, rounded caps + track gap)
+   ============================================================ */
+.m3-linear { position: relative; height: 8px; width: 100%; }
+.m3-linear .track { position: absolute; inset: 0; border-radius: 4px; background: var(--prov-track, var(--outline-variant)); }
+.m3-linear .ind { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; background: var(--prov, var(--primary)); }
+.m3-linear .stop { position: absolute; top: 50%; right: 0; width: 4px; height: 4px; border-radius: 50%; transform: translateY(-50%); background: var(--prov, var(--primary)); }
+
+/* ============================================================
+   Split-flap number tiles (signature element, kept)
+   ============================================================ */
+.flap { display: inline-flex; gap: 2px; }
+.flap .tile {
+  position: relative; min-width: 1ch; padding: 2px 3px;
+  background: var(--tile-bg); color: var(--tile-fg);
+  border-radius: 3px; font-family: "Roboto Mono", ui-monospace, monospace;
+  font-weight: 600; text-align: center; line-height: 1.05;
+}
+.flap .tile.sep { background: transparent; color: var(--on-surface-variant); padding: 2px 1px; }
+.flap .tile::after {
+  content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 1px;
+  background: var(--tile-seam); transform: translateY(-50%);
+}
+.flap .tile.sep::after { display: none; }
+
+/* ============================================================
+   Avatar (tonal, holds provider glyph)
+   ============================================================ */
+.m3-avatar { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+
+/* ============================================================
+   List / menu
+   ============================================================ */
+.m3-menu { background: var(--s-container); border-radius: 12px; padding: 8px 0; min-width: 220px;
+  box-shadow: 0 4px 8px 3px color-mix(in srgb, var(--shadow) 55%, transparent), 0 1px 3px var(--shadow); }
+.m3-menu .item { display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 14px;
+  color: var(--on-surface); font-size: 14px; cursor: pointer; position: relative; }
+.m3-menu .item:hover { background: var(--state-hover); }
+.m3-menu .item .mi { font-size: 20px; color: var(--on-surface-variant); width: 24px; text-align: center; }
+.m3-menu .item .trail { margin-left: auto; color: var(--on-surface-variant); font-size: 13px; }
+.m3-menu .divider { height: 1px; background: var(--outline-variant); margin: 8px 0; }
+
+/* ---------- text fields ---------- */
+.m3-field { position: relative; }
+.m3-field input {
+  width: 100%; height: 48px; padding: 0 14px; border-radius: 8px 8px 0 0;
+  background: var(--s-highest); border: none; border-bottom: 2px solid var(--outline);
+  color: var(--on-surface); font-family: inherit; font-size: 15px; outline: none;
+}
+.m3-field.focus input { border-bottom-color: var(--primary); }
+.m3-field .lbl { position: absolute; left: 14px; top: 6px; font-size: 11px; color: var(--primary); font-weight: 500; }
+
+/* dotted "drop image" placeholder helper */
+.ph {
+  background-image: repeating-linear-gradient(45deg, var(--outline-variant) 0 6px, transparent 6px 12px);
+  opacity: .5;
+}
+
+.mi { font-family: "Material Symbols Rounded"; font-weight: 400; font-style: normal;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; line-height: 1;
+  display: inline-flex; -webkit-font-feature-settings: 'liga'; letter-spacing: normal; }
+.mi.fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+/* pulse dot (kept signature) */
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--green)); flex: none;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--pc) 60%, transparent); animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pc) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
+
+/* wavy linear (M3 Expressive active indicator) */
+.m3-wavy { height: 14px; width: 100%; position: relative; overflow: hidden; }
+.m3-wavy .wtrack { position: absolute; inset: 5px 0; border-radius: 2px; background: var(--prov-track, var(--outline-variant)); }
+.m3-wavy svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* ============================================================
+   Motion — M3 emphasized easing
+   ============================================================ */
+:root {
+  --ease-emph: cubic-bezier(.2, 0, 0, 1);          /* emphasized */
+  --ease-decel: cubic-bezier(.05, .7, .1, 1);      /* emphasized decelerate */
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);  /* gentle overshoot */
+}
+
+/* card entrance cascade */
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(20px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+/* card entrance is driven imperatively (rAF-gated) so the resting state stays
+   visible — see elevated-anim.jsx. Keyframes kept for reference/no-JS only. */
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(20px) scale(.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* card hover lift + accent glow */
+.tk-card { transition: transform .26s var(--ease-emph), box-shadow .26s var(--ease-emph); }
+.tk-card:hover { transform: translateY(-3px); }
+.tk-card .tk-strip { transition: box-shadow .26s var(--ease-emph), background .26s var(--ease-emph); }
+.tk-card:hover .tk-strip { box-shadow: 0 0 14px 1px var(--prov); }
+
+/* split-flap odometer reel */
+.reel { display: inline-flex; gap: 2px; align-items: stretch; }
+.reel .cell {
+  position: relative; overflow: hidden; border-radius: 3px;
+  background: var(--tile-bg); color: var(--tile-fg);
+  font-family: "Roboto Mono", ui-monospace, monospace; font-weight: 600;
+}
+.reel .cell::after {
+  content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 1px;
+  background: var(--tile-seam); transform: translateY(-50%); z-index: 2; pointer-events: none;
+}
+.reel .cell.sep { background: transparent; color: var(--on-surface-variant); overflow: visible; }
+.reel .cell.sep::after { display: none; }
+.reel .col { display: flex; flex-direction: column; will-change: transform; }
+.reel .col > span { display: flex; align-items: center; justify-content: center; }
+@keyframes flap-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.reel .cell.sep > span { animation: flap-fade .4s var(--ease-decel) both; }
+
+/* tiny "refreshed" ripple on a card */
+@keyframes tk-flash { 0% { opacity: .5; } 100% { opacity: 0; } }
+.tk-flash { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(circle at var(--fx,50%) var(--fy,40%), var(--prov), transparent 60%);
+  opacity: 0; }
+.tk-flash.go { animation: tk-flash .6s var(--ease-decel); }
+
+/* spin the refresh glyph */
+@keyframes tk-spin { to { transform: rotate(360deg); } }
+.tk-spin { animation: tk-spin .6s var(--ease-emph); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tk-card { animation: none; }
+  .reel .col { transition: none !important; }
+}
