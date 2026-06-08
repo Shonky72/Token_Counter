@@ -80,6 +80,33 @@ def test_display_strings_no_limit():
     assert primary == "500 / ∞ tokens" and opposite == "—"
 
 
+def test_build_card_subtitle_and_unit_label():
+    status = ProviderStatus(
+        provider="claude",
+        gauges=[
+            Gauge("tokens/min", used=28_000, limit=40_000, unit="tokens"),
+            Gauge("requests/min", used=12, limit=45, unit="requests"),
+            Gauge("input tokens/min", used=18_000, limit=40_000, unit="tokens"),
+            Gauge("output tokens/min", used=10_000, limit=40_000, unit="tokens"),
+        ],
+    )
+    vm = build_card(status)
+    assert vm.subtitle == "12 / 45 msgs"
+    assert vm.unit_label == "TOKENS / MIN"
+    assert "↑ 18K" in vm.io_text and "↓ 10K" in vm.io_text
+
+
+def test_build_card_subtitle_falls_back():
+    # No requests window, no detail → "tracked usage".
+    status = ProviderStatus(provider="gemini",
+                            gauges=[Gauge("tokens/day", used=0, limit=2_000_000, unit="tokens")])
+    assert build_card(status).subtitle == "tracked usage"
+    # detail wins when present
+    status2 = ProviderStatus(provider="claude", detail="tier: build",
+                             gauges=[Gauge("tokens/min", used=1, limit=100)])
+    assert build_card(status2).subtitle == "tier: build"
+
+
 def test_build_card_hover_is_opposite():
     status = ProviderStatus(
         provider="claude",
@@ -114,7 +141,7 @@ def test_build_card_ring_with_sublines_and_reset():
     assert vm.percent == 85
     assert vm.primary_text == "1.7M / 2.0M tokens"
     assert any("input tokens/min" in s for s in vm.sub_lines)
-    assert vm.reset_text == "Resets in 14m"
+    assert vm.reset_text == "Resets 14m"
 
 
 def test_build_card_respects_preferred_primary():
