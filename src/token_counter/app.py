@@ -83,14 +83,15 @@ def _cmd_login(args) -> int:
 
 
 def _cmd_window(args) -> int:
-    from .window_ui import run_dashboard
+    # Web UI on WebView2 (falls back to the Tk window if unavailable).
+    from .webview_ui import run_dashboard
 
     run_dashboard(args.config)
     return 0
 
 
 def _cmd_popup(args) -> int:
-    from .window_ui import run_compact
+    from .webview_ui import run_compact
 
     run_compact(args.config)
     return 0

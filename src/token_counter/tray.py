@@ -184,9 +184,11 @@ class TrayApp:
         self._icon.icon = _make_icon_image(overall_percent(statuses), self.alert_threshold)
         self._icon.menu = self._build_menu()
 
-    def _reload_settings(self) -> None:
-        """Pick up display/alert changes made in the Settings window (another
-        process writes the config) so the tray stays in sync without a restart."""
+    def _reload_config(self) -> None:
+        """Pick up changes made elsewhere (Settings window, or accounts
+        added/removed in the login window) so the tray stays in sync without a
+        restart. Cheap: parses the config file once per refresh, rebuilds the
+        engine only when the provider list actually changes."""
         if not self.config_path:
             return
         try:
@@ -198,11 +200,17 @@ class TrayApp:
             self.token_basis = cfg.token_basis
             self.display_metric = cfg.display_metric
             self.theme = cfg.theme
+            new_names = [p.name for p in cfg.providers]
+            cur_names = [p.name for p in self.engine.config.providers]
+            if new_names != cur_names:  # account added/removed → rebuild providers
+                self.engine = Engine(cfg, self.engine.ledger, self.engine.store)
+                self._usage_urls = {p.name: p.option("usage_url") for p in cfg.providers}
+                self._last_pct = {k: v for k, v in self._last_pct.items() if k in new_names}
         except Exception:  # pragma: no cover - keep the tray alive
             pass
 
     def refresh(self) -> None:
-        self._reload_settings()
+        self._reload_config()
         now = datetime.now(timezone.utc)
         statuses = self.engine.snapshot(now)
         self._record_samples(statuses, now)

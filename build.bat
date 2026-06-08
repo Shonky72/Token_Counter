@@ -57,6 +57,8 @@ echo Step 4/4: building the executable ^(clean build^)...
 python -m PyInstaller --clean --noconfirm --noconsole --onefile --name tokn --paths src ^
   --icon icon.ico --version-file version_info.txt ^
   --collect-all pystray --collect-all PIL --collect-all keyring --collect-data token_counter ^
+  --collect-all webview --collect-all clr_loader --collect-all pythonnet ^
+  --hidden-import clr --hidden-import clr_loader ^
   run_token_counter.py
 if errorlevel 1 (
   echo.

@@ -4,8 +4,16 @@ from token_counter.flap import (
     FLAP_ALPHABET,
     flap_glyph,
     flap_string,
+    layout_offset,
     settle_fraction,
 )
+
+
+def test_layout_offset_centres_and_never_negative():
+    assert layout_offset(2, 15) == 6        # (15-2)//2
+    assert layout_offset(15, 15) == 0       # exact fit
+    assert layout_offset(20, 15) == 0       # longer than reserve → no negative
+    assert layout_offset(0, 4) == 2
 
 
 def test_alphabet_covers_amount_glyphs():

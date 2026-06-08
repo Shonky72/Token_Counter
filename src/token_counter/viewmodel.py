@@ -38,7 +38,10 @@ class CardVM:
     percent: int | None
     primary_text: str
     hover_text: str = ""        # the "other" metric, shown on hover
+    subtitle: str = ""          # second line under the title (e.g. "12 / 45 msgs")
+    unit_label: str = ""        # gauge label under the number (e.g. "TOKENS / MIN")
     sub_lines: list[str] = field(default_factory=list)
+    io_text: str = ""           # input/output chip text (e.g. "↑ 18K · ↓ 10K")
     reset_text: str | None = None
     detail: str | None = None
     error: str | None = None
@@ -222,17 +225,53 @@ def build_card(status: ProviderStatus, cfg: ProviderConfig | None = None,
 
     reset_secs = primary.reset_in_seconds()
     reset_text = (
-        f"Resets in {format_duration(reset_secs)}" if reset_secs is not None else None
+        f"Resets {format_duration(reset_secs)}" if reset_secs is not None else None
     )
 
     return CardVM(
         title=title, accent=accent, style=style, percent=percent,
-        primary_text=primary_text, hover_text=hover_text, sub_lines=sub_lines,
+        primary_text=primary_text, hover_text=hover_text,
+        subtitle=_subtitle(status, primary), unit_label=_unit_label(primary),
+        io_text=_io_text(status), sub_lines=sub_lines,
         reset_text=reset_text, detail=status.detail,
         provider=status.provider, service=service, scheme=scheme,
         usage_url=usage_url,
         used=primary.used, limit=primary.limit, unit=primary.unit,
     )
+
+
+def _unit_label(gauge: Gauge) -> str:
+    """Gauge label as a header, e.g. "tokens/min" -> "TOKENS / MIN"."""
+    return gauge.label.upper().replace("/", " / ")
+
+
+def _subtitle(status: ProviderStatus, primary: Gauge) -> str:
+    """Second line under the title: the requests window, else a status hint."""
+    for g in status.gauges:
+        if g is not primary and g.unit == "requests" and g.limit is not None:
+            return f"{g.used} / {g.limit} msgs"
+    if status.detail:
+        return status.detail
+    return "tracked usage"
+
+
+def _io_text(status: ProviderStatus) -> str:
+    """Input/output breakdown chip, e.g. "↑ 18K · ↓ 10K" (when both exist)."""
+    inp = out = None
+    for g in status.gauges:
+        low = g.label.lower()
+        if "input" in low:
+            inp = g.used
+        elif "output" in low:
+            out = g.used
+    if inp is None and out is None:
+        return ""
+    parts = []
+    if inp is not None:
+        parts.append(f"↑ {human(inp)}")
+    if out is not None:
+        parts.append(f"↓ {human(out)}")
+    return " · ".join(parts)
 
 
 def build_cards(

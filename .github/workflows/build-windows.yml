@@ -39,6 +39,8 @@ jobs:
           --icon icon.ico --version-file version_info.txt
           --collect-all pystray --collect-all PIL --collect-all keyring
           --collect-data token_counter
+          --collect-all webview --collect-all clr_loader --collect-all pythonnet
+          --hidden-import clr --hidden-import clr_loader
           run_token_counter.py
       - name: Upload .exe
         if: always()

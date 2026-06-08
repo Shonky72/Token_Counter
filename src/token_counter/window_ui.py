@@ -37,6 +37,7 @@ from .viewmodel import (
 
 # Shared palette (see theme.py) — set by app.main before this module imports.
 from .theme import (
+    ACCENT,
     BG,
     CARD,
     CARD_BORDER,
@@ -97,6 +98,53 @@ def _logo_photo(name: str, scheme, size: int, refs: list):
     return _photo(provider_logo_image(name, size, scheme), refs)
 
 
+def _hex_rgb(h: str):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _badge_photo(name: str, accent: str, scheme, size: int, refs: list):
+    """A circular accent-tinted badge with the provider logo centred."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((0, 0, size - 1, size - 1), fill=_hex_rgb(mix(CARD, accent, 0.22)) + (255,))
+    inner = int(size * 0.56)
+    logo = provider_logo_image(name, inner, scheme)
+    off = (size - inner) // 2
+    img.alpha_composite(logo, (off, off))
+    return _photo(img, refs)
+
+
+class Chip:
+    """A small rounded "pill" (icon + text) drawn on a mini Canvas."""
+
+    def __init__(self, parent, tk, *, icon="", text="", fg=SUBTEXT, fill=None,
+                 font=("Segoe UI", 8)):
+        self.tk = tk
+        self.icon = icon
+        self.fg = fg
+        self.fill = fill or CARD_HOVER
+        self.font = font
+        self.canvas = tk.Canvas(parent, height=22, bg=CARD, highlightthickness=0)
+        self.set_text(text)
+
+    def widget(self):
+        return self.canvas
+
+    def set_text(self, text: str):
+        c = self.canvas
+        c.delete("all")
+        label = (f"{self.icon} {text}".strip()) if self.icon else text
+        tid = c.create_text(12, 11, text=label, fill=self.fg, font=self.font, anchor="w")
+        bb = c.bbox(tid)
+        w = (bb[2] if bb else 40) + 10
+        c.configure(width=w)
+        pill = _round_rect(c, 1, 1, w - 1, 21, 9, fill=self.fill, outline="")
+        c.tag_lower(pill)  # keep text on top
+
+
 def _set_window_icon(root, refs: list):
     try:
         root.iconphoto(True, _photo(app_icon_image(64), refs))
@@ -104,8 +152,24 @@ def _set_window_icon(root, refs: list):
         pass
 
 
-def _draw_ring(canvas, x, y, d, percent, accent):
-    """Draw a donut gauge with the percentage in the middle."""
+def _round_rect_points(x1, y1, x2, y2, r):
+    """Polygon points approximating a rounded rectangle (for create_polygon,
+    smooth=True). Pure + bounded — unit-testable."""
+    r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))
+    return [
+        x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+        x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1,
+    ]
+
+
+def _round_rect(canvas, x1, y1, x2, y2, r, **kw):
+    """Draw a rounded rectangle on ``canvas`` (smooth polygon)."""
+    return canvas.create_polygon(_round_rect_points(x1, y1, x2, y2, r),
+                                 smooth=True, **kw)
+
+
+def _draw_ring(canvas, x, y, d, percent, accent, label=None):
+    """Draw a donut gauge with the percentage (and a small label) in the middle."""
     pad = 8
     canvas.create_oval(x, y, x + d, y + d, outline=TRACK, width=pad)
     if percent:
@@ -119,11 +183,15 @@ def _draw_ring(canvas, x, y, d, percent, accent):
             x, y, x + d, y + d, start=90, extent=extent,
             outline=accent, width=pad, style="arc",
         )
+    cy = y + d / 2 - (4 if label else 0)
     canvas.create_text(
-        x + d / 2, y + d / 2,
+        x + d / 2, cy,
         text=f"{percent}%" if percent is not None else "—",
         fill=TEXT, font=("Segoe UI", 13, "bold"),
     )
+    if label:
+        canvas.create_text(x + d / 2, cy + 14, text=label, fill=SUBTEXT,
+                           font=("Segoe UI", 7))
 
 
 def _draw_bar(canvas, x, y, w, h, percent, accent):
@@ -185,9 +253,31 @@ class Dashboard:
                  font=(app_font_family(), 15, "bold")).pack(side="left")
         tk.Label(bar, text=f"v{build_string()}", bg=BG, fg=SUBTEXT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
-        tk.Button(bar, text="⚙ Settings", command=self._open_settings,
-                  bg=BG, fg=SUBTEXT, relief="flat", activebackground=CARD,
-                  activeforeground=TEXT, cursor="hand2").pack(side="right")
+
+        def icon_btn(glyph, cmd):
+            return tk.Button(bar, text=glyph, command=cmd, bg=BG, fg=SUBTEXT,
+                             relief="flat", bd=0, activebackground=CARD,
+                             activeforeground=TEXT, cursor="hand2",
+                             font=("Segoe UI", 12))
+
+        # Right-to-left packing → shows as ☀  ↻  ⚙
+        icon_btn("⚙", self._open_settings).pack(side="right", padx=2)
+        icon_btn("↻", lambda: self.refresh_data()).pack(side="right", padx=2)
+        from . import theme as _theme
+        sun_moon = "☀" if _theme.active_theme() == "dark" else "🌙"
+        icon_btn(sun_moon, self._toggle_theme).pack(side="right", padx=2)
+
+    def _toggle_theme(self):
+        from . import theme as _theme
+        from .config import save_setting
+
+        new = "light" if _theme.active_theme() == "dark" else "dark"
+        try:
+            save_setting(self.config_path, "theme", new)
+        except Exception:
+            pass
+        self.config.theme = new
+        self._relaunch()  # reopen so the new palette paints everything
 
     def _build_footer(self):
         tk = self.tk
@@ -263,6 +353,9 @@ class Dashboard:
             return
         # Periodic refresh: update quietly. The flap reveal only plays on open;
         # here we just set the new amount and gently ease the gauge if it changed.
+        from . import icons
+
+        threshold = getattr(self.config, "alert_threshold", 90)
         for vm in vms:
             c = self._cards.get(vm.provider)
             if c is None:
@@ -270,9 +363,17 @@ class Dashboard:
             c["accent"] = vm.accent
             c["hover_text"] = vm.hover_text
             c["remaining"] = max(vm.limit - vm.used, 0) if vm.limit is not None else None
-            c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
-            c["reset_var"].set(vm.reset_text or "")
+            c["status_color"] = icons.status_color(vm.percent, threshold)
+            c["ring_label"] = "left" if self.config.token_basis == "remaining" else "used"
+            c["subtitle_var"].set(vm.subtitle)
+            c["msg_var"].set(vm.error or ("" if vm.percent is not None else vm.primary_text))
+            if c.get("reset_chip"):
+                c["reset_chip"].set_text(vm.reset_text or "—")
+            if c.get("io_chip") and vm.io_text:
+                c["io_chip"].set_text(vm.io_text)
             self._update_extras(c)
+            if not c.get("_hovering"):  # don't resize the number under the cursor
+                c["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
             if vm.provider in self._animators:
                 # A reveal/ease is still running — let it finish with fresh targets.
                 c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
@@ -283,106 +384,159 @@ class Dashboard:
                 c["flap"].set_static(shown)
                 self._register_ease(c, c.get("ring_pct"), vm.percent, vm.accent)
                 c["primary_text"], c["ring_pct"] = vm.primary_text, vm.percent
+            if c.get("refit"):
+                c["refit"]()  # content height may have shifted (subtitle/message)
 
     def _update_resets(self):
         if not self._cards:
             return
         for vm in self._vms():
             c = self._cards.get(vm.provider)
-            if c is not None:
-                c["reset_var"].set(vm.reset_text or "")
+            if c is not None and c.get("reset_chip"):
+                c["reset_chip"].set_text(vm.reset_text or "—")
 
     def _mono_font(self, size=11, weight="bold"):
         from .fonts import app_font_family
 
         return (app_font_family(), size, weight)
 
+    # --- rounded card shell --------------------------------------------
+    PAD = 14
+
+    def _card_shell(self, accent):
+        """A rounded-rect card drawn on a Canvas with an embedded content frame.
+        Returns (canvas, content_frame, refit_fn, hover_state)."""
+        tk = self.tk
+        card = tk.Canvas(self.body, bg=BG, highlightthickness=0, height=130,
+                         cursor="hand2")
+        card.pack(fill="x", pady=6)
+        content = tk.Frame(card, bg=CARD)
+        win = card.create_window(self.PAD, self.PAD, anchor="nw", window=content)
+        state = {"hover": False}
+
+        def refit(event=None):
+            w = event.width if event is not None else card.winfo_width()
+            if w <= 1:
+                return
+            content.update_idletasks()
+            h = content.winfo_reqheight()
+            ch = h + 2 * self.PAD
+            if int(card["height"]) != ch:
+                card.configure(height=ch)
+            card.itemconfigure(win, width=w - 2 * self.PAD)
+            card.delete("shell")
+            outline = accent if state["hover"] else CARD_BORDER
+            _round_rect(card, 2, 2, w - 2, ch - 2, 16, fill=CARD, outline=outline,
+                        width=2 if state["hover"] else 1, tags="shell")
+            _round_rect(card, 6, self.PAD + 6, 10, ch - self.PAD - 6, 2,
+                        fill=accent, outline="", tags="shell")
+            card.tag_lower("shell")
+
+        card.bind("<Configure>", refit)
+        return card, content, refit, state
+
     # --- one card ------------------------------------------------------
     def _create_card(self, vm: CardVM):
         tk = self.tk
-        card = tk.Frame(self.body, bg=CARD, highlightbackground=CARD_BORDER,
-                        highlightthickness=2, cursor="hand2")
-        card.pack(fill="x", pady=6)
-        # Accent left strip for a touch of colour.
-        strip = tk.Frame(card, bg=vm.accent, width=3)
-        strip.pack(side="left", fill="y")
-        inner = tk.Frame(card, bg=CARD)
-        inner.pack(side="left", fill="x", expand=True, padx=12, pady=10)
+        from . import icons
 
-        head = tk.Frame(inner, bg=CARD)
+        card, content, refit, hstate = self._card_shell(vm.accent)
+        threshold = getattr(self.config, "alert_threshold", 90)
+        status_color = icons.status_color(vm.percent, threshold)
+
+        # Header: circular badge, title + subtitle, status dot, refresh.
+        head = tk.Frame(content, bg=CARD)
         head.pack(fill="x")
-        logo = _logo_photo(vm.service or vm.provider or vm.title, vm.scheme, 22,
-                           self._photos)
-        tk.Label(head, image=logo, bg=CARD).pack(side="left")
-        tk.Label(head, text=vm.title.upper(), bg=CARD, fg=TEXT,
-                 font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
-        # Gentle "live" pulse dot + per-card refresh.
-        pulse = tk.Canvas(head, width=12, height=12, bg=CARD, highlightthickness=0)
-        pulse.pack(side="right")
-        refresh_btn = tk.Button(head, text="⟳", bg=CARD, fg=SUBTEXT, relief="flat",
-                                activebackground=CARD_HOVER, activeforeground=TEXT,
-                                cursor="hand2", bd=0,
-                                command=lambda p=vm.provider: self._refresh_card(p))
-        refresh_btn.pack(side="right", padx=(0, 6))
+        badge = _badge_photo(vm.service or vm.provider or vm.title, vm.accent,
+                             vm.scheme, 40, self._photos)
+        tk.Label(head, image=badge, bg=CARD).pack(side="left")
+        titlebox = tk.Frame(head, bg=CARD)
+        titlebox.pack(side="left", padx=(10, 0))
+        tk.Label(titlebox, text=vm.title, bg=CARD, fg=TEXT,
+                 font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        subtitle_var = tk.StringVar(value=vm.subtitle)
+        tk.Label(titlebox, textvariable=subtitle_var, bg=CARD, fg=SUBTEXT,
+                 font=("Segoe UI", 8)).pack(anchor="w")
+        tk.Button(head, text="↻", bg=CARD, fg=SUBTEXT, relief="flat",
+                  activebackground=CARD_HOVER, activeforeground=TEXT, cursor="hand2",
+                  bd=0, command=lambda p=vm.provider: self._refresh_card(p)
+                  ).pack(side="right")
+        pulse = tk.Canvas(head, width=14, height=14, bg=CARD, highlightthickness=0)
+        pulse.pack(side="right", padx=(0, 8))
 
-        reset_var = tk.StringVar(value=vm.reset_text or "")
-        sub_var = tk.StringVar(value="\n".join(vm.sub_lines))
         extra_var = tk.StringVar(value="")
-        c = {"style": vm.style, "reset_var": reset_var, "sub_var": sub_var,
-             "extra_var": extra_var, "limit": vm.limit, "unit": vm.unit,
-             "accent": vm.accent, "pulse": pulse, "card": card, "strip": strip,
+        msg_var = tk.StringVar(value=(vm.error or ("" if vm.percent is not None else vm.primary_text)))
+        c = {"style": vm.style, "extra_var": extra_var, "msg_var": msg_var,
+             "subtitle_var": subtitle_var, "limit": vm.limit, "unit": vm.unit,
+             "accent": vm.accent, "pulse": pulse, "card": card, "refit": refit,
+             "hstate": hstate, "status_color": status_color,
+             "ring_label": "left" if self.config.token_basis == "remaining" else "used",
              "provider": vm.provider, "primary_text": vm.primary_text,
              "hover_text": vm.hover_text, "ring_pct": vm.percent,
              "usage_url": vm.usage_url,
              "remaining": max(vm.limit - vm.used, 0) if vm.limit is not None else None}
 
-        row = tk.Frame(inner, bg=CARD)
-        row.pack(fill="x", pady=(8, 0))
+        row = tk.Frame(content, bg=CARD)
+        row.pack(fill="x", pady=(10, 0))
 
         if vm.style == "bar":
-            flap = FlapDisplay(row, tk, bg=CARD, font=self._mono_font(11),
+            info = row
+            flap = FlapDisplay(info, tk, bg=CARD, font=self._mono_font(12),
                                tile_bg=TILE_BG, fg=FLAP_FG)
             flap.widget().pack(anchor="w")
-            canvas = tk.Canvas(row, height=8, bg=CARD, highlightthickness=0)
-            canvas.pack(fill="x", pady=(6, 4))
+            tk.Label(info, text=vm.unit_label, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 7)).pack(anchor="w")
+            canvas = tk.Canvas(info, height=8, bg=CARD, highlightthickness=0)
+            canvas.pack(fill="x", pady=(6, 2))
             c["canvas"] = canvas
-            host = row
         else:
             canvas = tk.Canvas(row, width=72, height=72, bg=CARD, highlightthickness=0)
             canvas.pack(side="left")
             c["canvas"] = canvas
             info = tk.Frame(row, bg=CARD)
-            info.pack(side="left", fill="x", expand=True, padx=12)
-            flap = FlapDisplay(info, tk, bg=CARD, font=self._mono_font(11),
+            info.pack(side="left", fill="x", expand=True, padx=14)
+            flap = FlapDisplay(info, tk, bg=CARD, font=self._mono_font(12),
                                tile_bg=TILE_BG, fg=FLAP_FG)
             flap.widget().pack(anchor="w")
-            host = info
+            tk.Label(info, text=vm.unit_label, bg=CARD, fg=SUBTEXT,
+                     font=("Segoe UI", 7)).pack(anchor="w")
 
-        subrow = tk.Frame(host, bg=CARD)
-        subrow.pack(fill="x")
-        tk.Label(subrow, textvariable=sub_var, bg=CARD, fg=SUBTEXT,
-                 font=("Segoe UI", 8), justify="left").pack(side="left")
-        tk.Label(subrow, textvariable=reset_var, bg=CARD, fg=SUBTEXT,
-                 font=("Segoe UI", 9)).pack(side="right")
+        # Error / "no data" message (wraps); empty for normal cards.
+        tk.Label(info, textvariable=msg_var, bg=CARD, fg=SUBTEXT,
+                 font=("Segoe UI", 8), justify="left", wraplength=300).pack(anchor="w")
+
+        # Pill chips: resets + input/output.
+        chips = tk.Frame(info, bg=CARD)
+        chips.pack(fill="x", pady=(6, 0))
+        reset_chip = Chip(chips, tk, icon="🕘", text=(vm.reset_text or "—"))
+        reset_chip.widget().pack(side="left", padx=(0, 6))
+        c["reset_chip"] = reset_chip
+        if vm.io_text:
+            io_chip = Chip(chips, tk, text=vm.io_text)
+            io_chip.widget().pack(side="left")
+            c["io_chip"] = io_chip
+
         # Burn-rate / run-out / cost line + a 24h sparkline.
-        foot = tk.Frame(host, bg=CARD)
-        foot.pack(fill="x", pady=(3, 0))
+        foot = tk.Frame(info, bg=CARD)
+        foot.pack(fill="x", pady=(5, 0))
         tk.Label(foot, textvariable=extra_var, bg=CARD, fg=SUBTEXT,
                  font=("Segoe UI", 8)).pack(side="left")
         if self.config.show_sparkline:
-            spark = tk.Canvas(foot, width=120, height=16, bg=CARD, highlightthickness=0)
+            spark = tk.Canvas(foot, width=110, height=16, bg=CARD, highlightthickness=0)
             spark.pack(side="right")
             c["spark"] = spark
 
         c["flap"] = flap
-        # Reserve width with blank tiles so the cascade doesn't shift layout.
-        flap.set_static(" " * max(1, len(vm.primary_text)))
+        flap.set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
+        flap.set_static("")
         self._cards[vm.provider] = c
         self._attach_hover(c)
         self._attach_actions(c)
         self._draw_gauge(c, 0, vm.accent)
         self._update_extras(c)
         self._ensure_pulse()
+        content.update_idletasks()
+        refit()
 
     # --- reveal cascade + master animation clock -----------------------
     def _start_cascade(self):
@@ -450,26 +604,28 @@ class Dashboard:
 
     # --- hover highlight ----------------------------------------------
     def _attach_hover(self, c):
-        card, strip, accent = c["card"], c["strip"], c["accent"]
-        state = {"n": 0}
+        card, hstate, refit = c["card"], c["hstate"], c["refit"]
+        count = {"n": 0}
 
         def enter(_):
-            state["n"] += 1
-            try:
-                card.configure(highlightbackground=accent)
-                strip.configure(bg=lighten(accent, 0.2))
-            except Exception:
-                pass
-
-        def leave(_):
-            state["n"] -= 1
-            if state["n"] <= 0:
-                state["n"] = 0
+            count["n"] += 1
+            if not hstate["hover"]:
+                hstate["hover"] = True
                 try:
-                    card.configure(highlightbackground=CARD_BORDER)
-                    strip.configure(bg=accent)
+                    refit()
                 except Exception:
                     pass
+
+        def leave(_):
+            count["n"] -= 1
+            if count["n"] <= 0:
+                count["n"] = 0
+                if hstate["hover"]:
+                    hstate["hover"] = False
+                    try:
+                        refit()
+                    except Exception:
+                        pass
 
         def walk(w):
             w.bind("<Enter>", enter, add="+")
@@ -552,11 +708,20 @@ class Dashboard:
         c = self._cards.get(prov)
         if c is None:
             return
+        from . import icons
+
         c["accent"], c["primary_text"], c["hover_text"] = vm.accent, vm.primary_text, vm.hover_text
         c["ring_pct"] = vm.percent
         c["remaining"] = max(vm.limit - vm.used, 0) if vm.limit is not None else None
-        c["sub_var"].set(("⚠ " + vm.error) if vm.error else "\n".join(vm.sub_lines))
-        c["reset_var"].set(vm.reset_text or "")
+        c["status_color"] = icons.status_color(vm.percent, getattr(self.config, "alert_threshold", 90))
+        c["subtitle_var"].set(vm.subtitle)
+        c["msg_var"].set(vm.error or ("" if vm.percent is not None else vm.primary_text))
+        if c.get("reset_chip"):
+            c["reset_chip"].set_text(vm.reset_text or "—")
+        if c.get("io_chip") and vm.io_text:
+            c["io_chip"].set_text(vm.io_text)
+        if not c.get("_hovering"):
+            c["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
         self._animators[prov] = {
             "kind": "reveal", "c": c, "text": vm.primary_text, "tpct": vm.percent or 0,
             "ring": vm.percent, "accent": vm.accent, "start": time.monotonic(),
@@ -630,9 +795,10 @@ class Dashboard:
                 continue
             try:
                 canvas.delete("all")
-                r = 2.5 + 1.6 * level
-                col = mix(CARD, c.get("accent", "#5a78c8"), 0.35 + 0.65 * level)
-                canvas.create_oval(6 - r, 6 - r, 6 + r, 6 + r, fill=col, outline="")
+                r = 3.0 + 1.6 * level
+                base = c.get("status_color") or c.get("accent", ACCENT)
+                col = mix(CARD, base, 0.4 + 0.6 * level)
+                canvas.create_oval(7 - r, 7 - r, 7 + r, 7 + r, fill=col, outline="")
             except Exception:
                 pass
         try:
@@ -648,10 +814,10 @@ class Dashboard:
         canvas.delete("all")
         if c["style"] == "bar":
             canvas.update_idletasks()
-            w = max(canvas.winfo_width(), 360)
+            w = max(canvas.winfo_width(), 280)
             _draw_bar(canvas, 0, 0, w, 8, p or 0, accent)
         else:
-            _draw_ring(canvas, 4, 4, 64, p, accent)
+            _draw_ring(canvas, 4, 4, 64, p, accent, label=c.get("ring_label"))
 
     # --- window position memory ----------------------------------------
     def _on_configure(self, event):
@@ -998,7 +1164,8 @@ class CompactPopup:
             flap = FlapDisplay(r, tk, bg=CARD, font=self._mono_font(9),
                                tile_w=9, tile_h=16, tile_bg=TILE_BG, fg=SUBTEXT)
             flap.widget().pack(side="right")
-            flap.set_static(" " * max(1, len(vm.primary_text)))
+            flap.set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
+            flap.set_static("")
             bar = tk.Canvas(self.frame, height=5, width=260, bg=CARD, highlightthickness=0)
             bar.pack(fill="x")
             row = {"flap": flap, "bar": bar, "text": vm.primary_text,
@@ -1034,6 +1201,8 @@ class CompactPopup:
                 row = self._rows.get(vm.provider)
                 if row is None or vm.provider in self._animators:
                     continue
+                if not row.get("_hovering"):
+                    row["flap"].set_reserve(max(len(vm.primary_text), len(vm.hover_text)))
                 if vm.primary_text != row["text"]:
                     shown = vm.hover_text if row.get("_hovering") and vm.hover_text else vm.primary_text
                     row["flap"].set_static(shown)
