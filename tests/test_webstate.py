@@ -102,9 +102,22 @@ def test_error_card_carries_message():
     config = _config([{"name": "x", "type": "rate_limit", "service": "x"}])
     statuses = [ProviderStatus(provider="x", error="no rate-limit data yet")]
     card = webstate.build_state(config, statuses)["cards"][0]
+    # The full error rides along in `error`/`note`, but it must NEVER be fed to the
+    # split-flap via `tokens` (that produced a giant unreadable tile row).
     assert card["error"] == "no rate-limit data yet"
-    assert card["tokens"] == "no rate-limit data yet"
+    assert card["note"] == "no rate-limit data yet"
+    assert card["tokens"] != "no rate-limit data yet"
     assert card["pct"] == 0
+
+
+def test_long_error_is_shortened_for_the_caption():
+    config = _config([{"name": "x", "type": "rate_limit", "service": "x"}])
+    msg = "no rate-limit data yet — make an API call (and forward its headers)"
+    statuses = [ProviderStatus(provider="x", error=msg)]
+    card = webstate.build_state(config, statuses)["cards"][0]
+    assert card["error"] == msg              # full text preserved (for the tooltip)
+    assert card["note"] == "no rate-limit data yet"  # short caption (clause before —)
+    assert len(card["note"]) <= 28
 
 
 def test_light_theme_derives_light_tones():

@@ -97,6 +97,13 @@ def _cmd_popup(args) -> int:
     return 0
 
 
+def _cmd_settings(args) -> int:
+    from .webview_ui import run_settings
+
+    run_settings(args.config)
+    return 0
+
+
 def _cmd_startup(args) -> int:
     from . import startup as startup_mod
     from .config import save_open_on_startup
@@ -215,6 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("window", help="open the dashboard window").set_defaults(func=_cmd_window)
     sub.add_parser("popup", help="open the compact summary popup").set_defaults(func=_cmd_popup)
     sub.add_parser("login", help="open the provider sign-in window").set_defaults(func=_cmd_login)
+    sub.add_parser("settings", help="open the settings window").set_defaults(func=_cmd_settings)
     sub.add_parser("status", help="print current usage and exit").set_defaults(func=_cmd_status)
     sub.add_parser("providers", help="list registered provider types").set_defaults(
         func=_cmd_providers

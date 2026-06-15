@@ -332,9 +332,27 @@ class LoginWindow:
 
 def run_login(config_path: str | Path) -> None:
     from .config import ensure_config
+    from .singleton import SingleInstance
+
+    inst = SingleInstance("login")
+    if not inst.acquire():
+        return  # already open — we've pinged the running window to come forward
 
     ensure_config(config_path)
     config = load_config(config_path)
     store = CredentialStore()
     ledger = Ledger(config.resolved_ledger_path)
-    LoginWindow(config, store, ledger, str(Path(config_path).expanduser())).run()
+    win = LoginWindow(config, store, ledger, str(Path(config_path).expanduser()))
+
+    def _focus() -> None:  # listener thread -> marshal back onto the Tk thread
+        try:
+            win.root.after(0, lambda: (
+                win.root.deiconify(), win.root.lift(), win.root.focus_force()))
+        except Exception:
+            pass
+
+    inst.set_focus_handler(_focus)
+    try:
+        win.run()
+    finally:
+        inst.close()
