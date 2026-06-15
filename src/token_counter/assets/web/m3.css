@@ -93,9 +93,9 @@
   --state-hover: rgba(29,27,32,.06);
   --state-press: rgba(29,27,32,.10);
 
-  --tile-bg: #2a2730;
-  --tile-fg: #f6f1fb;
-  --tile-seam: rgba(0,0,0,.28);
+  --tile-bg: #e7e0ec;
+  --tile-fg: #211f26;
+  --tile-seam: rgba(0,0,0,.12);
 }
 
 /* ---------- Base ---------- */

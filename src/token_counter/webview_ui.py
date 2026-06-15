@@ -139,6 +139,79 @@ class Api:
         self._spawn("login")
         return True
 
+    def open_settings(self) -> bool:
+        self._spawn("settings")
+        return True
+
+    def close(self) -> bool:
+        win = getattr(self, "_window", None)
+        if win is not None:
+            try:
+                win.destroy()
+            except Exception:
+                pass
+        return True
+
+    # ---- settings page ---------------------------------------------------
+    def get_settings(self) -> dict:
+        from . import startup, theme as theme_mod
+
+        c = self.config
+        supported = startup.is_supported()
+        on_startup = startup.is_enabled() if supported else c.open_on_startup
+        return {
+            "theme": c.theme,
+            "resolved_theme": theme_mod.resolve_theme(c.theme),
+            "basis": c.token_basis,
+            "metric": c.display_metric,
+            "show_cost": c.show_cost,
+            "show_sparkline": c.show_sparkline,
+            "alerts_enabled": c.alerts_enabled,
+            "alert_threshold": c.alert_threshold,
+            "open_on_startup": bool(on_startup),
+            "startup_supported": supported,
+            "version": self._version(),
+        }
+
+    # whitelist of directly-persistable settings -> coercion
+    _SETTINGS = {
+        "theme": str, "token_basis": str, "display_metric": str,
+        "show_cost": bool, "show_sparkline": bool,
+        "alerts_enabled": bool, "alert_threshold": int,
+    }
+
+    def set_setting(self, key: str, value) -> dict:
+        from . import config as config_mod
+
+        coerce = self._SETTINGS.get(key)
+        if coerce is not None:
+            config_mod.save_setting(self.config_path, key, coerce(value))
+            self.config = config_mod.load_config(self.config_path)
+        return self.get_settings()
+
+    def set_startup(self, value) -> dict:
+        from . import config as config_mod, startup
+
+        want = bool(value)
+        if startup.is_supported():
+            startup.set_enabled(want)
+        config_mod.save_open_on_startup(self.config_path, want)
+        self.config = config_mod.load_config(self.config_path)
+        return self.get_settings()
+
+    def export(self, fmt: str = "json") -> str:
+        from datetime import datetime, timezone
+
+        from . import reporting
+
+        fmt = "csv" if str(fmt).lower() == "csv" else "json"
+        providers = [p.name for p in self.config.providers]
+        start = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        data = reporting.export_usage(self.engine.ledger, providers, start, fmt)
+        out = Path("~/.token_counter").expanduser() / f"tokn-usage.{fmt}"
+        out.write_text(data, encoding="utf-8")
+        return str(out)
+
 
 def _refresh_loop(api: Api, window, interval: int) -> None:
     while True:
@@ -152,14 +225,42 @@ def _refresh_loop(api: Api, window, interval: int) -> None:
             break
 
 
+# page file + (width, height) per screen
+_PAGES = {
+    "dashboard": ("dashboard.html", (444, 760)),
+    "compact": ("compact.html", (320, 380)),
+    "settings": ("settings.html", (470, 620)),
+}
+
+
+def _focus_window(window) -> None:
+    """Best-effort bring-to-front when a second launch pings the owner."""
+    for method in ("restore", "show"):
+        try:
+            getattr(window, method)()
+        except Exception:
+            pass
+    try:  # nudge to the top, then drop the always-on-top flag again
+        window.on_top = True
+        window.on_top = False
+    except Exception:
+        pass
+
+
 def _run(screen: str, config_path: str | Path) -> None:
+    from .singleton import SingleInstance
+
     cfg_path = str(Path(config_path).expanduser())
-    page = "compact.html" if screen == "compact" else "dashboard.html"
-    width, height = (320, 380) if screen == "compact" else (444, 760)
+    page, (width, height) = _PAGES.get(screen, _PAGES["dashboard"])
+
+    inst = SingleInstance(screen)
+    if not inst.acquire():
+        return  # already open elsewhere — we've pinged it to come forward
 
     try:
         import webview  # noqa: F401  (lazy: avoids a GUI dep on headless/CI imports)
     except Exception:
+        inst.close()
         return _fallback(screen, cfg_path)
 
     try:
@@ -169,6 +270,8 @@ def _run(screen: str, config_path: str | Path) -> None:
             "tokn", url=url, js_api=api, width=width, height=height,
             background_color="#141218", resizable=True,
         )
+        api._window = window
+        inst.set_focus_handler(lambda: _focus_window(window))
         interval = max(5, api.config.refresh_seconds)
         threading.Thread(
             target=_refresh_loop, args=(api, window, interval), daemon=True
@@ -176,10 +279,16 @@ def _run(screen: str, config_path: str | Path) -> None:
         webview.start()
     except Exception:
         # WebView2 runtime missing or the window failed to start.
+        inst.close()
         return _fallback(screen, cfg_path)
+    finally:
+        inst.close()
 
 
 def _fallback(screen: str, config_path: str) -> None:
+    # No Tk equivalent for the settings page; the web window is required there.
+    if screen == "settings":
+        return
     from .window_ui import run_compact, run_dashboard
 
     if screen == "compact":
@@ -194,3 +303,7 @@ def run_dashboard(config_path: str | Path) -> None:
 
 def run_compact(config_path: str | Path) -> None:
     _run("compact", config_path)
+
+
+def run_settings(config_path: str | Path) -> None:
+    _run("settings", config_path)

@@ -18,22 +18,21 @@ def is_frozen() -> bool:
 def popen_kwargs() -> dict:
     """Extra kwargs so spawned processes never flash a console window on Windows.
 
-    Returns ``{}`` everywhere except Windows, where it sets ``CREATE_NO_WINDOW``
-    plus a hidden ``STARTUPINFO``. Use with ``subprocess.run``/``Popen`` for any
-    spawn (PowerShell shortcut helpers, relaunching tokn windows, etc.).
+    Returns ``{}`` everywhere except Windows, where it sets ``CREATE_NO_WINDOW``.
+    Use with ``subprocess.run``/``Popen`` for any spawn (PowerShell shortcut
+    helpers, relaunching tokn windows, etc.).
+
+    NOTE: we deliberately do **not** pass a ``STARTUPINFO`` with ``SW_HIDE`` here.
+    ``CREATE_NO_WINDOW`` already suppresses the console flash for console
+    subprocesses, whereas ``SW_HIDE`` also tells a *GUI* child to start with its
+    main window hidden. Tk windows force themselves visible and ignore it, but a
+    pywebview/WebView2 window honours it and never appears — which is exactly the
+    bug that hid the dashboard/compact windows when launched from the tray.
     """
     if not sys.platform.startswith("win"):
         return {}
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    kwargs: dict = {"creationflags": flags}
-    try:  # belt and braces: also hide via STARTUPINFO
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0  # SW_HIDE
-        kwargs["startupinfo"] = si
-    except Exception:  # pragma: no cover - non-Windows / odd builds
-        pass
-    return kwargs
+    return {"creationflags": flags}
 
 
 

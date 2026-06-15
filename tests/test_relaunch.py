@@ -32,3 +32,18 @@ def test_parser_accepts_produced_argument_order():
     ns = parser.parse_args(["-c", "/p/cfg.yaml", "login"])
     assert ns.command == "login"
     assert ns.config == "/p/cfg.yaml"
+
+
+def test_popen_kwargs_never_hides_gui_windows(monkeypatch):
+    # Regression: a SW_HIDE STARTUPINFO was being passed to *every* spawn, which
+    # made the WebView2 dashboard/compact start hidden (never visible from tray).
+    # We must keep CREATE_NO_WINDOW (console flash) but never pass startupinfo.
+    monkeypatch.setattr(relaunch.sys, "platform", "win32")
+    kw = relaunch.popen_kwargs()
+    assert "startupinfo" not in kw
+    assert "creationflags" in kw
+
+
+def test_popen_kwargs_empty_off_windows(monkeypatch):
+    monkeypatch.setattr(relaunch.sys, "platform", "linux")
+    assert relaunch.popen_kwargs() == {}

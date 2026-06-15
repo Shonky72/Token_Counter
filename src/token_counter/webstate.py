@@ -107,6 +107,24 @@ def _reset_short(reset_text: str | None) -> str:
     return reset_text[len(prefix):] if reset_text.startswith(prefix) else reset_text
 
 
+def _short_note(error: str | None) -> str:
+    """A terse caption for the card when there's no numeric amount to flap.
+
+    The full ``error`` still rides along (shown on hover); this is just a short
+    stand-in for the split-flap, e.g. "no rate-limit data yet — make an API
+    call…" -> "no rate-limit data yet".
+    """
+    if not error:
+        return ""
+    head = error.strip()
+    for sep in (" — ", " – ", " - ", ": ", ". "):
+        if sep in head:
+            head = head.split(sep, 1)[0]
+            break
+    head = head.strip()
+    return head if len(head) <= 28 else head[:27].rstrip() + "…"
+
+
 def _io_pair(status: ProviderStatus, kind: str) -> str:
     """"used / limit" for the input/output token gauge, or "" if absent."""
     for g in status.gauges:
@@ -127,7 +145,11 @@ def card_dict(status: ProviderStatus, cfg: ProviderConfig | None, *,
     item = {
         "key": key,
         "service": card.service,
-        "tokens": card.error or card.primary_text,
+        # Only the numeric token amount goes to the split-flap; an error/no-data
+        # message is carried separately (`note`/`error`) so the flap never tries
+        # to render a long sentence as tiles.
+        "tokens": card.primary_text or "",
+        "note": _short_note(card.error),
         "pct": card.percent if card.percent is not None else 0,
         "resets": _reset_short(card.reset_text),
         "inp": _io_pair(status, "input"),

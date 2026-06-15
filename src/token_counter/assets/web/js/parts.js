@@ -95,18 +95,59 @@
       h('div', { class: 'stop' }));
   }
 
-  /* ---- Split-flap number tiles (signature element) ---- */
+  /* ---- Split-flap number tiles (signature element) ----
+     Each digit rolls (odometer / split-flap) up to its target when the tile is
+     (re)created; units (K, M, %, .) and separators (space, /) stay put. Because
+     the dashboard re-renders on every refresh, this plays the flip each refresh.
+     Honours prefers-reduced-motion (renders the resting tiles, no motion). */
+  var _reduceMotion = !!(global.matchMedia &&
+    global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function _digitSeq(target) {
+    // a short upward roll of digits that lands exactly on `target`
+    var steps = 7 + Math.floor(Math.random() * 4);
+    var start = ((target - (steps % 10)) % 10 + 10) % 10;
+    var arr = [];
+    for (var i = 0; i <= steps; i++) arr.push((start + i) % 10);
+    arr[arr.length - 1] = target;
+    return arr;
+  }
+
   function Flap(text, size, gap) {
     size = size || 15; gap = gap == null ? 2 : gap;
-    var flap = h('span', { class: 'flap', style: { gap: gap + 'px' } });
-    String(text).split('').forEach(function (ch) {
+    var cellH = Math.round(size * 1.34);
+    var reel = h('span', { class: 'reel', style: { gap: gap + 'px' } });
+    String(text).split('').forEach(function (ch, idx) {
       var sep = ch === ' ' || ch === '/';
-      flap.appendChild(h('span', {
-        class: 'tile' + (sep ? ' sep' : ''),
-        style: { fontSize: size + 'px', minWidth: sep ? 'auto' : (size * 0.7) + 'px' },
-      }, ch === ' ' ? '\u00a0' : ch));
+      var base = {
+        fontSize: size + 'px', height: cellH + 'px', lineHeight: cellH + 'px',
+        minWidth: sep ? 'auto' : (size * 0.7) + 'px', textAlign: 'center',
+        padding: sep ? '0 1px' : '0 3px',
+      };
+      if (sep) {
+        reel.appendChild(h('span', { class: 'cell sep', style: base }, ch === ' ' ? '\u00a0' : '/'));
+        return;
+      }
+      if (_reduceMotion || !/[0-9]/.test(ch)) {  // units / reduced motion: static
+        reel.appendChild(h('span', { class: 'cell', style: base }, ch));
+        return;
+      }
+      var seq = _digitSeq(parseInt(ch, 10));
+      var col = h('span', { class: 'col' });
+      seq.forEach(function (d) {
+        col.appendChild(h('span', { style: { height: cellH + 'px', lineHeight: cellH + 'px' } }, String(d)));
+      });
+      reel.appendChild(h('span', { class: 'cell', style: base }, col));
+      var travel = -(seq.length - 1) * cellH;
+      var delay = (idx * 0.05).toFixed(3) + 's';
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          col.style.transition = 'transform .55s var(--ease-decel) ' + delay;
+          col.style.transform = 'translateY(' + travel + 'px)';
+        });
+      });
     });
-    return flap;
+    return reel;
   }
 
   function Pulse(color) {
