@@ -270,6 +270,29 @@ def add_provider(path: str | Path, service_key: str, label: str | None = None) -
     return name
 
 
+def ensure_provider(path: str | Path, service_key: str) -> bool:
+    """Ensure a provider block named exactly ``service_key`` exists in the config.
+
+    Used by ``import-usage`` so the ledger-backed card shows up. Returns True if a
+    block was added, False if one already existed.
+    """
+    from .catalog import provider_config_for
+
+    path = Path(path).expanduser()
+    raw = _read_raw(path)
+    providers = raw.get("providers") or []
+    if not isinstance(providers, list):
+        raise ConfigError("'providers' must be a list")
+    if any(isinstance(p, dict) and p.get("name") == service_key for p in providers):
+        return False
+    cfg = provider_config_for(service_key)
+    cfg["name"] = service_key
+    providers.append(cfg)
+    raw["providers"] = providers
+    _write_raw(path, raw)
+    return True
+
+
 def group_by_service(providers: list) -> list:
     """Order providers so instances of the same service sit together.
 

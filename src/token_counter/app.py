@@ -148,6 +148,8 @@ def _cmd_export(args) -> int:
 
 
 def _cmd_record(args) -> int:
+    from .usage_import import parse_date
+
     config, ledger, store = _load(args.config)
     ledger.record(
         provider=args.provider,
@@ -156,11 +158,44 @@ def _cmd_record(args) -> int:
         output_tokens=args.output,
         cache_read_tokens=args.cache_read,
         cache_creation_tokens=args.cache_creation,
+        ts=parse_date(args.date) if args.date else None,
     )
     print(
         f"[token-counter] recorded {args.input + args.output} tokens "
         f"for {args.provider}/{args.model}"
     )
+    return 0
+
+
+# --service shorthand -> the stable provider name whose card shows the import.
+_IMPORT_SERVICE = {"claude": "claude_tracked", "gemini": "gemini"}
+
+
+def _cmd_import(args) -> int:
+    from . import usage_import
+    from .config import ensure_config, ensure_provider
+
+    provider = args.provider or _IMPORT_SERVICE.get(args.service or "")
+    if not provider:
+        print("[token-counter] specify --provider NAME or --service {claude|gemini}",
+              file=sys.stderr)
+        return 2
+
+    ensure_config(args.config)
+    if args.service:
+        try:
+            if ensure_provider(args.config, provider):
+                print(f"[token-counter] added '{provider}' card to your config")
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[token-counter] note: could not auto-add the card: {exc}")
+
+    _config, ledger, _store = _load(args.config)
+    try:
+        count, total = usage_import.import_csv(ledger, provider, args.file)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[token-counter] import failed: {exc}", file=sys.stderr)
+        return 2
+    print(f"[token-counter] imported {count} events · {total} tokens into '{provider}'")
     return 0
 
 
@@ -251,7 +286,15 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--output", type=int, default=0)
     rec.add_argument("--cache-read", type=int, default=0)
     rec.add_argument("--cache-creation", type=int, default=0)
+    rec.add_argument("--date", help="back-date the event (YYYY-MM-DD); default now")
     rec.set_defaults(func=_cmd_record)
+
+    imp = sub.add_parser("import-usage", help="import usage history from a CSV into the ledger")
+    imp.add_argument("file", help="CSV with date,model,input_tokens,output_tokens columns")
+    imp.add_argument("--service", choices=["claude", "gemini"],
+                     help="auto-add the matching card (claude->Claude — Tracked, gemini->Gemini)")
+    imp.add_argument("--provider", help="explicit provider name to import under (overrides --service)")
+    imp.set_defaults(func=_cmd_import)
 
     exp = sub.add_parser("export", help="export recorded usage to CSV/JSON")
     exp.add_argument("--format", choices=["csv", "json"], default="json")

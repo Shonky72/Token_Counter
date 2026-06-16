@@ -37,6 +37,7 @@ _BRAND = {
     "openai": (16, 163, 127),
     "claude": (217, 119, 87),
     "claude_usage": (217, 119, 87),
+    "claude_tracked": (217, 119, 87),
     "gemini": (66, 133, 244),
     "grok": (236, 236, 237),       # near-white: xAI mark reads on the dark bg
     "deepseek": (77, 107, 254),
@@ -56,6 +57,7 @@ def provider_key(name: str, scheme: str | None = None) -> str:
     pairs = [
         ("openai", ("openai", "chatgpt", "gpt")),
         ("claude_usage", ("claude_usage", "claude — usage")),
+        ("claude_tracked", ("claude_tracked", "claude — tracked")),
         ("claude", ("claude", "anthropic")),
         ("gemini", ("gemini", "google")),
         ("grok", ("grok", "xai")),
@@ -186,6 +188,7 @@ _DRAWERS = {
     "gemini": _sparkle,
     "claude": _sunburst,
     "claude_usage": _sunburst,
+    "claude_tracked": _sunburst,
     "openai": _ring,
     "grok": _slash_x,
     "deepseek": _whale,

@@ -52,6 +52,14 @@ def test_claude_usage_is_admin_pull_provider():
     assert pc.budget.period == "monthly"  # gives the ring a denominator
 
 
+def test_claude_tracked_is_ledger_backed():
+    # The no-key "Claude — Tracked" card renders imported/reported usage.
+    svc = catalog.get("claude_tracked")
+    assert svc is not None and svc.type == "local_ledger"
+    cfg = parse_config({"providers": [catalog.provider_config_for("claude_tracked")]})
+    assert cfg.providers[0].budget.period == "monthly"
+
+
 def test_unknown_service_raises():
     import pytest
 
