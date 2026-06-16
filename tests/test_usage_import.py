@@ -69,6 +69,33 @@ def test_import_rows_records_into_ledger(tmp_path):
     assert ledger.usage_since("claude_tracked", july) == []
 
 
+def test_provider_for_model_routing():
+    assert usage_import.provider_for_model("claude-haiku-4-5") == "claude_tracked"
+    assert usage_import.provider_for_model("claude-opus-4-8") == "claude_tracked"
+    assert usage_import.provider_for_model("gemini-2.5-pro") == "gemini"
+    assert usage_import.provider_for_model("gpt-4o-mini") is None
+    assert usage_import.provider_for_model("") is None
+
+
+def test_import_auto_routes_mixed_csv(tmp_path):
+    ledger = Ledger(tmp_path / "ledger.db")
+    csv = _write(tmp_path / "mixed.csv",
+                 "date,model,input_tokens,output_tokens\n"
+                 "2026-06-15,claude-haiku-4-5,100000,50000\n"
+                 "2026-06-15,gemini-2.5-pro,8000,2000\n"
+                 "2026-06-15,gpt-4o-mini,500,500\n")
+    seen = []
+    result, unknown = usage_import.import_auto(ledger, csv, ensure=seen.append)
+    assert result["claude_tracked"] == (1, 150000)
+    assert result["gemini"] == (1, 10000)
+    assert unknown == 1  # the gpt row has no ledger-backed card
+    assert set(seen) == {"claude_tracked", "gemini"}
+
+    start = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    assert sum(m.total for m in ledger.usage_since("claude_tracked", start)) == 150000
+    assert sum(m.total for m in ledger.usage_since("gemini", start)) == 10000
+
+
 def test_ensure_provider_adds_card_idempotently(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("providers: []\n", encoding="utf-8")

@@ -12,6 +12,24 @@
 
   function api() { return (window.pywebview && window.pywebview.api) || null; }
   function on(el, fn) { if (el) el.addEventListener('click', fn); }
+
+  function toast(msg, ms) {
+    if (!msg) return;
+    var el = document.getElementById('tk-toast');
+    if (!el) {
+      el = h('div', { id: 'tk-toast' });
+      el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);'
+        + 'max-width:88%;background:var(--s-highest,#2a2730);color:var(--on-surface,#efe);'
+        + 'padding:10px 16px;border-radius:12px;font:500 13px Roboto,system-ui,sans-serif;'
+        + 'box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9999;opacity:0;transition:opacity .2s;'
+        + 'pointer-events:none;text-align:center;';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.style.opacity = '0'; }, ms || 2600);
+  }
   function applyTheme(theme) {
     theme = theme || 'dark';
     document.body.className = 'm3';
@@ -43,8 +61,17 @@
     var appbar = node.querySelector('.m3-appbar');
     if (appbar) {
       var gear = appbar.querySelector('.m3-icon-btn');  // the settings gear
+      var importBtn = h('button', { class: 'm3-icon-btn', title: 'Import usage from a CSV' }, mi('upload_file'));
       var refreshAll = h('button', { class: 'm3-icon-btn', title: 'Refresh all' }, mi('refresh'));
-      if (gear) appbar.insertBefore(refreshAll, gear); else appbar.appendChild(refreshAll);
+      if (gear) { appbar.insertBefore(importBtn, gear); appbar.insertBefore(refreshAll, gear); }
+      else { appbar.appendChild(importBtn); appbar.appendChild(refreshAll); }
+      if (a) on(importBtn, function () {
+        toast('Choose a CSV…');
+        Promise.resolve(a.import_usage())
+          .then(function (msg) { toast(msg || 'Import cancelled', 5000); return a.get_state(); })
+          .then(applyState)
+          .catch(function (e) { toast('Import failed: ' + (e && e.message ? e.message : e), 5000); });
+      });
       if (a) on(refreshAll, function () { Promise.resolve(a.refresh()).then(applyState); });
       if (a) on(gear, function () { a.open_settings(); });
     }

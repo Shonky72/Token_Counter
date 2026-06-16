@@ -143,6 +143,51 @@ class Api:
         self._spawn("settings")
         return True
 
+    def import_usage(self) -> str:
+        """Pick a CSV via a native file dialog, import it (auto-routing rows to the
+        right card by model name), and reload so the cards show immediately."""
+        import webview
+
+        from . import config as config_mod, usage_import
+
+        win = getattr(self, "_window", None)
+        paths = None
+        if win is not None:
+            try:
+                paths = win.create_file_dialog(
+                    webview.OPEN_DIALOG, allow_multiple=False,
+                    file_types=("CSV files (*.csv)", "All files (*.*)"),
+                )
+            except Exception:
+                paths = None
+        if not paths:
+            return ""  # cancelled
+        path = paths[0] if isinstance(paths, (list, tuple)) else paths
+
+        def _ensure(prov: str) -> None:
+            config_mod.ensure_provider(self.config_path, prov)
+
+        try:
+            result, unknown = usage_import.import_auto(self.engine.ledger, path, _ensure)
+        except Exception as exc:
+            return f"Import failed: {exc}"
+
+        # reload so a newly-added card is picked up by this window on the next refresh
+        try:
+            self.config = config_mod.load_config(self.config_path)
+            self.engine = _engine_for(self.config)
+        except Exception:
+            pass
+
+        if not result and not unknown:
+            return "No rows found in that file."
+        names = {"claude_tracked": "Claude", "gemini": "Gemini"}
+        parts = [f"{t:,} tokens → {names.get(p, p)}" for p, (_c, t) in result.items()]
+        msg = "Imported " + "; ".join(parts) if parts else "Nothing imported"
+        if unknown:
+            msg += f" ({unknown} row(s) skipped — unrecognised model)"
+        return msg
+
     def close(self) -> bool:
         win = getattr(self, "_window", None)
         if win is not None:

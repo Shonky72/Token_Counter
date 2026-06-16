@@ -127,3 +127,45 @@ def import_rows(ledger, provider: str, rows: list[dict]) -> tuple[int, int]:
 
 def import_csv(ledger, provider: str, path: str | Path) -> tuple[int, int]:
     return import_rows(ledger, provider, parse_rows(path))
+
+
+# Route a row to the right ledger-backed card from its model name, so one
+# "Import usage" button can handle a mixed CSV with no service picker.
+_MODEL_SERVICE = (
+    (("claude", "anthropic", "opus", "sonnet", "haiku"), "claude_tracked"),
+    (("gemini", "google", "bison", "gemma", "palm"), "gemini"),
+)
+
+
+def provider_for_model(model: str | None) -> str | None:
+    m = (model or "").lower()
+    for needles, prov in _MODEL_SERVICE:
+        if any(n in m for n in needles):
+            return prov
+    return None
+
+
+def import_auto(ledger, path: str | Path, ensure=None) -> tuple[dict, int]:
+    """Import a CSV, routing each row to a card by model name.
+
+    ``ensure(provider)`` is called once per detected provider (e.g. to add the
+    config card). Returns ``({provider: (count, total)}, unknown_row_count)``.
+    """
+    buckets: dict[str, list[dict]] = {}
+    unknown = 0
+    for row in parse_rows(path):
+        prov = provider_for_model(row.get("model"))
+        if prov is None:
+            unknown += 1
+            continue
+        buckets.setdefault(prov, []).append(row)
+    result: dict[str, tuple[int, int]] = {}
+    for prov, rows in buckets.items():
+        if ensure is not None:
+            try:
+                ensure(prov)
+            except Exception:
+                pass
+        result[prov] = import_rows(ledger, prov, rows)
+    return result, unknown
+
