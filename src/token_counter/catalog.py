@@ -66,6 +66,21 @@ SERVICES: dict[str, Service] = {
               "Note: developer API key — separate from Claude.ai Pro."),
         options={"display": "ring", "primary": "requests"},
     ),
+    "claude_usage": Service(
+        key="claude_usage", display_name="Claude — Usage", type="anthropic_admin",
+        scheme=None,
+        key_url="https://console.anthropic.com/settings/admin-keys",
+        usage_url="https://console.anthropic.com/settings/usage",
+        help=("Shows your *cumulative* used tokens (like the Console Usage page),\n"
+              "via Anthropic's organization Usage API.\n\n"
+              "1. Open console.anthropic.com (you must be an Org Owner).\n"
+              "2. Settings → Admin keys → Create Admin Key.\n"
+              "3. Copy the key (starts with sk-ant-admin-) and paste it here.\n\n"
+              "Notes: reports the whole organization's usage; updates with a few\n"
+              "minutes of lag (not live within 30s). Distinct from a normal API key."),
+        options={"display": "ring", "primary": "tokens",
+                 "budget": {"period": "monthly", "limit": 5000000}},
+    ),
     "openai": Service(
         key="openai", display_name="ChatGPT", type="rate_limit", scheme="openai",
         key_url="https://platform.openai.com/api-keys",
