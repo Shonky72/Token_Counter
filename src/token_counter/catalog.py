@@ -66,6 +66,38 @@ SERVICES: dict[str, Service] = {
               "Note: developer API key — separate from Claude.ai Pro."),
         options={"display": "ring", "primary": "requests"},
     ),
+    "claude_usage": Service(
+        key="claude_usage", display_name="Claude — Usage", type="anthropic_admin",
+        scheme=None,
+        key_url="https://console.anthropic.com/settings/admin-keys",
+        usage_url="https://console.anthropic.com/settings/usage",
+        help=("Shows your *cumulative* used tokens (like the Console Usage page),\n"
+              "via Anthropic's organization Usage API.\n\n"
+              "Requires a Team/Enterprise organization — Individual accounts cannot\n"
+              "create Admin keys (the Admin-keys page 404s). For Individual accounts,\n"
+              "use \"Claude — Tracked\" and import your usage instead.\n\n"
+              "1. Open console.anthropic.com (you must be an Org Owner).\n"
+              "2. Settings → Admin keys → Create Admin Key.\n"
+              "3. Copy the key (starts with sk-ant-admin-) and paste it here.\n\n"
+              "Notes: reports the whole organization's usage; updates with a few\n"
+              "minutes of lag (not live within 30s). Distinct from a normal API key."),
+        options={"display": "ring", "primary": "tokens",
+                 "budget": {"period": "monthly", "limit": 5000000}},
+    ),
+    "claude_tracked": Service(
+        key="claude_tracked", display_name="Claude — Tracked", type="local_ledger",
+        scheme=None,
+        key_url="https://console.anthropic.com/settings/usage",
+        usage_url="https://console.anthropic.com/settings/usage",
+        help=("No API key needed. Shows usage you import or report locally —\n"
+              "useful on Individual accounts, which have no usage API.\n\n"
+              "Read your per-day, per-model totals from the Console Usage page,\n"
+              "put them in a CSV (date,model,input_tokens,output_tokens), then run:\n"
+              "    tokn import-usage claude.csv --service claude\n\n"
+              "The card then shows your monthly total and estimated cost."),
+        options={"display": "ring", "primary": "tokens",
+                 "budget": {"period": "monthly", "limit": 2000000}},
+    ),
     "openai": Service(
         key="openai", display_name="ChatGPT", type="rate_limit", scheme="openai",
         key_url="https://platform.openai.com/api-keys",

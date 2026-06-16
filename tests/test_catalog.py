@@ -40,6 +40,26 @@ def test_every_service_has_usage_url():
         assert catalog.provider_config_for(key)["usage_url"] == svc.usage_url
 
 
+def test_claude_usage_is_admin_pull_provider():
+    # The "Claude — Usage" account pulls cumulative tokens from the Anthropic
+    # Usage/Admin API (vs the rate-limit-header "claude" card).
+    svc = catalog.get("claude_usage")
+    assert svc is not None
+    assert svc.type == "anthropic_admin"
+    cfg = parse_config({"providers": [catalog.provider_config_for("claude_usage")]})
+    pc = cfg.providers[0]
+    assert pc.type == "anthropic_admin"
+    assert pc.budget.period == "monthly"  # gives the ring a denominator
+
+
+def test_claude_tracked_is_ledger_backed():
+    # The no-key "Claude — Tracked" card renders imported/reported usage.
+    svc = catalog.get("claude_tracked")
+    assert svc is not None and svc.type == "local_ledger"
+    cfg = parse_config({"providers": [catalog.provider_config_for("claude_tracked")]})
+    assert cfg.providers[0].budget.period == "monthly"
+
+
 def test_unknown_service_raises():
     import pytest
 
